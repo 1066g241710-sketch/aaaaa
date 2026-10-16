@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>たるみぽんぽんPay / ウォーク</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B2F63">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<!-- Monacaなどでアプリ化したとき、背景位置情報などのプラグインを使うために必要です。ブラウザで開いたときは見つからなくても問題ありません -->
+<script src="cordova.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+/* ===== 1. CSS変数（青基調：垂水の海・明石海峡大橋） ===== */
+:root{
+  --primary-color:#1366D6;   /* メインブルー */
+  --primary-dark:#0A3F91;    /* 深い海の青（グラデーション用） */
+  --primary-soft:rgba(19,102,214,.1);
+  --bg-color:#EEF4FA;        /* 背景：淡い空色 */
+  --accent-color:#FFC700;    /* アクセントイエロー */
+  --text-primary:#0F2438;
+  --text-secondary:#5B6F82;
+  --card-bg:#FFFFFF;
+  --ok:#1E9E5A;
+  --shadow:0 4px 12px rgba(10,63,145,.1);
+  --radius:16px;
+  --nav-h:64px;
+  --head-h:56px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Meiryo",sans-serif;background:#DCE6F1;color:var(--text-primary);line-height:1.5;display:flex;justify-content:center;min-height:100vh}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent-color);outline-offset:2px}
+
+/* ===== 2. レイアウト（480px以下に最適化・センター寄せ） ===== */
+.app{width:100%;max-width:480px;min-height:100vh;background:var(--bg-color);position:relative;padding-bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom,0px))}
+.header{position:sticky;top:0;z-index:1100;height:calc(var(--head-h) + env(safe-area-inset-top,0px));padding:env(safe-area-inset-top,0px) 16px 0;background:var(--primary-color);color:#fff;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:1.05rem;display:flex;gap:8px;align-items:center}
+.gps-chip{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:6px 12px;font-size:.75rem;font-weight:700;display:flex;gap:6px;align-items:center}
+.gps-chip.on{background:var(--accent-color);color:var(--text-primary)}
+main{padding:16px}
+.page{display:none}.page.active{display:block}
+.title{font-size:1.02rem;font-weight:700;margin:20px 0 10px;display:flex;justify-content:space-between;align-items:center}
+.title:first-child{margin-top:0}
+.sub{font-size:.8rem;color:var(--text-secondary);font-weight:400}
+
+/* ===== 3. 残高カード ===== */
+.balance{background:linear-gradient(135deg,var(--primary-color),var(--primary-dark));color:#fff;border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}
+.balance .label{font-size:.85rem;opacity:.9}
+.balance .amount{font-size:2.4rem;font-weight:800;line-height:1.2}
+.balance .amount small{font-size:1rem;margin-left:4px}
+.balance .row{display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.25);font-size:.85rem}
+.progress{height:6px;background:rgba(255,255,255,.25);border-radius:3px;margin-top:8px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent-color);width:0;transition:width .3s}
+.gps-text{font-size:.75rem;color:var(--text-secondary);margin:8px 2px 0}
+
+/* ===== 4. クイックアクション（Grid 4列・タップで縮む） ===== */
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}
+.q-btn{background:var(--card-bg);border:0;border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 4px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.72rem;font-weight:700;cursor:pointer;transition:transform .12s}
+.q-btn:active{transform:scale(.96)}
+.q-ico{width:44px;height:44px;border-radius:50%;background:var(--primary-soft);color:var(--primary-color);display:flex;align-items:center;justify-content:center;font-size:1.15rem}
+
+/* ===== 5. カード・タグ ===== */
+.card{background:var(--card-bg);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:12px;transition:transform .12s}
+.card.tap{cursor:pointer;width:100%;text-align:left;border:0;display:block}
+.card.tap:active{transform:scale(.98)}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.card-title{font-weight:700;font-size:.97rem}
+.card-body{font-size:.86rem;color:var(--text-secondary)}
+.card-date{font-size:.75rem;color:var(--text-secondary);margin-top:6px}
+.tag{display:inline-block;padding:4px 10px;border-radius:999px;font-size:.72rem;font-weight:700;white-space:nowrap}
+.tag-primary{background:var(--primary-soft);color:var(--primary-color)}
+.tag-accent{background:var(--accent-color);color:var(--text-primary)}
+.tag-gray{background:#E3EAF1;color:var(--text-secondary)}
+.log{display:flex;justify-content:space-between;padding:8px 0;font-size:.85rem;border-bottom:1px solid #E6EDF4}
+.log:last-child{border:0}.log b{color:var(--primary-color)}
+.empty{text-align:center;color:var(--text-secondary);padding:20px;font-size:.85rem}
+
+/* ===== 6. ボタン ===== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px 18px;border:0;border-radius:999px;font-weight:700;font-size:.92rem;cursor:pointer;transition:transform .12s}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--primary-color);color:#fff;box-shadow:0 4px 12px rgba(19,102,214,.3)}
+.btn-outline{background:transparent;border:2px solid var(--primary-color);color:var(--primary-color)}
+.btn-sm{padding:9px 14px;font-size:.82rem}
+.btn:disabled{background:#C9D5E1;color:#fff;box-shadow:none;cursor:not-allowed;border:0}
+
+/* ===== 7. ボトムナビ ===== */
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;height:calc(var(--nav-h) + env(safe-area-inset-bottom,0px));padding-bottom:env(safe-area-inset-bottom,0px);background:var(--card-bg);display:flex;justify-content:space-around;box-shadow:0 -2px 10px rgba(10,63,145,.08);z-index:1100}
+.nav button{flex:1;border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:.68rem;font-weight:600;color:var(--text-secondary);cursor:pointer}
+.nav i{font-size:1.2rem}
+.nav button.active{color:var(--primary-color)}
+
+/* ===== 8. マップ・QR ===== */
+#map{height:calc(100vh - var(--head-h) - var(--nav-h) - 140px);min-height:300px;border-radius:var(--radius);box-shadow:var(--shadow);z-index:1}
+.pop b{display:block;margin-bottom:2px}
+.qr-box{position:relative;width:100%;max-width:320px;aspect-ratio:1;margin:0 auto 16px;border-radius:var(--radius);overflow:hidden;background:#0A1B33;box-shadow:var(--shadow)}
+.qr-box video{width:100%;height:100%;object-fit:cover}
+.qr-frame{position:absolute;inset:0;border:3px solid rgba(255,199,0,.8);box-shadow:inset 0 0 0 40px rgba(10,27,51,.45);pointer-events:none}
+.qr-line{position:absolute;left:10%;width:80%;height:2px;background:var(--accent-color);box-shadow:0 0 8px var(--accent-color);animation:scan 2s infinite ease-in-out;display:none}
+.qr-box.on .qr-line{display:block}
+@keyframes scan{0%,100%{top:15%}50%{top:85%}}
+
+/* ===== 9. モーダル ===== */
+.overlay{position:fixed;inset:0;background:rgba(10,27,51,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:2000;opacity:0;pointer-events:none;transition:opacity .2s}
+.overlay.active{opacity:1;pointer-events:auto}
+.modal{background:var(--card-bg);width:100%;max-width:400px;border-radius:var(--radius);padding:22px;max-height:85vh;overflow:auto}
+.modal h3{font-size:1.05rem;margin-bottom:10px}
+.m-body{font-size:.9rem;color:var(--text-secondary);margin-bottom:18px;line-height:1.7;white-space:pre-line}
+.m-foot{display:flex;gap:10px}
+.code{background:#F2F7FC;border:2px dashed #BBD0E6;border-radius:8px;padding:12px;text-align:center;font:700 1.2rem monospace;letter-spacing:2px;color:var(--primary-color);margin:12px 0}
+.big{text-align:center;color:var(--primary-color);font-size:1.6rem;font-weight:800}
+/* ===== 10. ログイン・管理者画面 ===== */
+.auth{position:fixed;inset:0;z-index:1900;background:linear-gradient(160deg,var(--primary-color),var(--primary-dark));display:none;align-items:center;justify-content:center;padding:20px;overflow:auto}
+.auth.show{display:flex}
+.auth-card{background:#fff;border-radius:var(--radius);padding:24px;width:100%;max-width:380px;box-shadow:var(--shadow)}
+.auth-card h2{color:var(--primary-color);text-align:center}
+.field{display:block;margin-top:12px;font-size:.8rem;font-weight:700;color:var(--text-secondary);text-align:left}
+.field input,.field textarea,.field select,.search{width:100%;margin-top:4px;padding:11px 12px;border:2px solid #D3E0EE;border-radius:10px;font:inherit;color:var(--text-primary)}
+.field input:focus,.field textarea:focus,.field select:focus,.search:focus{border-color:var(--primary-color);outline:0}
+.err{color:#C62828;font-size:.82rem;min-height:1.3em;margin:10px 0 6px}
+.link{background:none;border:0;color:var(--primary-color);font-weight:700;margin-top:12px;width:100%;cursor:pointer}
+.admin{position:fixed;inset:0;z-index:1500;background:var(--bg-color);overflow:auto;display:none}
+.admin.show{display:block}
+.admin-head{background:var(--primary-dark);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:2}
+.admin-in{max-width:720px;margin:0 auto;padding:16px}
+.admin-tabs{display:flex;gap:8px;margin-bottom:12px;overflow-x:auto}
+.admin-tabs button{flex:0 0 auto;padding:10px 14px;font-size:.8rem;white-space:nowrap;border:0;border-radius:999px;font-weight:700;background:#fff;color:var(--primary-color);cursor:pointer}
+.admin-tabs button.active{background:var(--primary-color);color:#fff}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.sum div{background:#fff;border-radius:12px;padding:10px;text-align:center;box-shadow:var(--shadow);font-size:.72rem;color:var(--text-secondary)}
+.sum b{display:block;font-size:1.3rem;color:var(--primary-color)}
+.u-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.u-btns{display:flex;gap:6px;margin-top:10px}
+.qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:12px}
+.qr-item{text-align:center}.qr-item div{display:flex;justify-content:center;margin:8px 0}
+@media print{.admin-head,.admin-tabs,.no-print{display:none!important}.admin{position:static}}
+/* ===== 11. 追加機能（スタンプ・バッジ・地図・キャンペーン・集計） ===== */
+.nav button{position:relative}
+.dot{position:absolute;top:8px;left:calc(50% + 8px);width:11px;height:11px;border-radius:50%;background:#E53935;border:2px solid #fff}
+.camp{background:var(--accent-color);color:var(--text-primary);border-radius:12px;padding:10px 14px;font-weight:700;font-size:.85rem;margin-top:10px}
+.stamps{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;justify-items:center;margin:4px 0 10px}
+.stamp{width:44px;height:44px;border-radius:50%;border:2px dashed #BBD0E6;display:flex;align-items:center;justify-content:center;color:#BBD0E6}
+.stamp.on{border:0;background:var(--primary-color);color:#fff}
+.badges{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.bsvg{color:#B8C7D6;flex:0 0 auto}.bsvg.on{color:var(--primary-color)}
+.badge-mini{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.bcard{background:var(--card-bg);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 10px;text-align:center}
+.bico{width:76px;height:76px;border-radius:50%;background:#F2F7FC;display:flex;align-items:center;justify-content:center;margin:0 auto 8px}
+.bcard.on .bico{background:#E8F1FD}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;align-items:center}
+.chip{flex:0 0 auto;border:2px solid var(--primary-color);background:#fff;color:var(--primary-color);border-radius:999px;padding:4px 12px;font-size:.78rem;font-weight:700;cursor:pointer}
+.chip.on{background:var(--primary-color);color:#fff}
+.pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--accent-color);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.pin.v{background:var(--primary-color)}
+.bar{display:grid;grid-template-columns:90px 1fr 36px;gap:8px;align-items:center;font-size:.78rem;margin:6px 0}
+.bar i{display:block;height:10px;border-radius:5px;background:var(--primary-color);min-width:2px}
+.bar b{text-align:right;color:var(--primary-color)}
+.op{font-size:.72rem;font-weight:700;border-radius:999px;padding:2px 8px;background:#E3F6EA;color:var(--ok);margin-left:6px}
+.op.x{background:#E3EAF1;color:var(--text-secondary)}
+.langsel{padding:8px 12px;border:2px solid #D3E0EE;border-radius:10px;font:inherit;margin-top:6px}
+.field .bd-sel{display:flex;gap:6px;margin-top:4px}
+.field .bd-sel select{width:auto;flex:1;min-width:0;margin-top:0;background:#fff;font-size:.95rem;font-weight:400}
+#adminMap{height:320px;border-radius:var(--radius);box-shadow:var(--shadow);z-index:1;margin-top:12px}
+/* ===== 12. 地図/一覧の切り替え・お店の一覧・距離の履歴・案内 ===== */
+.seg{display:flex;background:#DCE8F4;border-radius:999px;padding:3px;margin-bottom:12px}
+.seg button{flex:1;border:0;background:transparent;border-radius:999px;padding:8px;font-weight:700;color:var(--primary-color);cursor:pointer}
+.seg button.on{background:#fff;box-shadow:0 1px 4px rgba(10,63,145,.18)}
+.srow{display:flex;align-items:stretch;gap:6px;padding:0;overflow:hidden}
+.srow-main{flex:1;min-width:0;border:0;background:none;text-align:left;padding:14px 4px 14px 16px;cursor:pointer;display:block}
+.srow-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 6px}
+.fav{border:0;background:none;padding:0 16px;font-size:1.3rem;color:#B8C7D6;cursor:pointer}
+.fav.on{color:var(--accent-color)}
+.hist{display:flex;align-items:flex-end;gap:6px;height:112px;margin-top:6px}
+.hist.thirty{gap:2px}
+.hbar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:0}
+.hbar i{display:block;width:100%;max-width:30px;border-radius:6px 6px 2px 2px;background:#9CC2F2;min-height:3px}
+.hbar.today i{background:var(--primary-color)}
+.hbar b{font-size:.62rem;color:var(--text-secondary);font-weight:700;margin-bottom:2px;white-space:nowrap}
+.hlab{display:flex;gap:6px;margin:4px 0 10px}.hlab.thirty{gap:2px}
+.hlab span{flex:1;text-align:center;font-size:.64rem;color:var(--text-secondary);min-width:0;white-space:nowrap;overflow:visible}
+.hlab span.today{color:var(--primary-color);font-weight:700}
+#tour{z-index:2100}
+.tour{text-align:center}
+.tour-ico{width:72px;height:72px;border-radius:50%;background:var(--primary-soft);color:var(--primary-color);display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 12px}
+.tour h3{margin-bottom:10px}
+.tour .m-body{margin-bottom:12px;text-align:left}.tour .m-body p{margin-bottom:8px}
+.tour-dots{display:flex;gap:6px;justify-content:center;margin-bottom:16px}
+.tour-dots i{width:8px;height:8px;border-radius:50%;background:#C9D5E1}.tour-dots i.on{background:var(--primary-color)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ===== 11. デザイン調整（色・文字・影・余白だけを整える。構造や機能は変えていません） ===== */
+:root{
+  --primary-color:#1B6BCB;
+  --primary-dark:#0B2F63;
+  --primary-soft:rgba(27,107,203,.09);
+  --bg-color:#F1F6FB;
+  --accent-color:#F5B800;
+  --text-primary:#14283D;
+  --text-secondary:#62768A;
+  --shadow:0 1px 2px rgba(11,47,99,.05),0 8px 24px rgba(11,47,99,.08);
+}
+body{font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans","Meiryo",sans-serif;font-feature-settings:"palt";letter-spacing:.01em}
+.header{background:var(--primary-dark);box-shadow:0 2px 10px rgba(11,47,99,.2)}
+.header h1{font-size:1.08rem;font-weight:700;letter-spacing:.06em}
+.gps-chip{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28)}
+.gps-chip.on{background:var(--accent-color);border-color:var(--accent-color)}
+
+/* タイトル：左に細い青い線 */
+.title{font-weight:700;letter-spacing:.04em}
+.title>span:first-child{display:inline-flex;align-items:center;gap:8px}
+.title>span:first-child::before{content:"";width:4px;height:1.05em;border-radius:2px;background:var(--primary-color)}
+.title>span:first-child:has(i)::before{display:none}
+
+/* 残高カード：波と橋の線画をうっすら */
+.balance{position:relative;overflow:hidden;padding:22px 20px;border-radius:20px;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 80' fill='none' stroke='white' stroke-opacity='.18' stroke-width='1.5'><path d='M0 62 H200'/><path d='M40 62 V14 M160 62 V14'/><path d='M40 14 Q100 66 160 14'/><path d='M0 50 Q20 50 40 14 M200 50 Q180 50 160 14'/><path d='M60 62 V40 M80 62 V50 M100 62 V54 M120 62 V50 M140 62 V40' stroke-opacity='.12'/></svg>") top 10px right 8px/180px no-repeat,var(--primary-dark);box-shadow:0 10px 24px rgba(11,47,99,.22)}
+.balance .label{opacity:.85;letter-spacing:.05em}
+.balance .amount{font-size:3rem;font-weight:800;letter-spacing:.01em;font-variant-numeric:tabular-nums;text-shadow:0 2px 10px rgba(0,0,0,.15)}
+.balance .amount small{font-size:1.05rem;font-weight:700;opacity:.85}
+.balance .row b{font-variant-numeric:tabular-nums}
+.progress{height:7px}
+.progress i{background:var(--accent-color);border-radius:4px}
+
+/* クイックアクション・カード */
+.q-btn{border:1px solid rgba(11,47,99,.05);padding:14px 4px 12px}
+.q-ico{background:#E6F0FB;width:46px;height:46px;font-size:1.15rem}
+.card{border:1px solid rgba(11,47,99,.05);padding:16px 18px}
+.card-title{font-size:1rem;letter-spacing:.02em}
+
+/* タグ：ptは黄色ベタをやめて、落ち着いた金色の縁にする */
+.tag{padding:3px 10px;font-weight:700;letter-spacing:.02em}
+.tag-accent{background:#FFF6DB;color:#8A5B00;box-shadow:inset 0 0 0 1px #F3D98A}
+.tag-primary{background:#E5F0FC;color:var(--primary-color)}
+.tag-gray{background:#EAF0F6}
+
+/* ボタン */
+.btn-primary{background:var(--primary-color);box-shadow:0 4px 12px rgba(27,107,203,.25)}
+.btn-outline{border-width:1.5px}
+.chip{border-width:1.5px;font-weight:700}
+.chip.on{background:var(--primary-color);border-color:var(--primary-color)}
+.seg{background:#E3ECF6;padding:4px}
+.seg button{padding:9px;letter-spacing:.04em}
+.seg button.on{box-shadow:0 2px 8px rgba(11,47,99,.14);color:var(--primary-dark)}
+
+/* スタンプ・バッジ */
+.stamp{border:1.5px dashed #C3D5E8;background:#F7FAFD}
+.stamp.on{background:var(--primary-color);animation:stampIn .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes stampIn{from{transform:scale(1.6) rotate(-14deg);opacity:0}to{transform:none;opacity:1}}
+
+/* 歩いた距離グラフ */
+.hbar i{background:#BBD6F5}
+.hbar.today i{background:var(--primary-color)}
+
+/* 下のメニュー：選んでいる項目に丸い背景 */
+.nav{border-top:0;box-shadow:0 -6px 24px rgba(11,47,99,.08);background:rgba(255,255,255,.96);backdrop-filter:blur(8px)}
+.nav button{position:relative;font-weight:700;letter-spacing:.02em}
+.nav button.active{color:var(--primary-color)}
+.nav button.active i{background:var(--primary-soft);width:46px;height:28px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:-1px}
+
+.modal{border-radius:20px;box-shadow:0 20px 50px rgba(5,20,45,.35)}
+.tour-ico{background:#E6F0FB}
+.auth{background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 80' fill='none' stroke='white' stroke-opacity='.22' stroke-width='1.5'><path d='M0 62 H200'/><path d='M40 62 V14 M160 62 V14'/><path d='M40 14 Q100 66 160 14'/><path d='M0 50 Q20 50 40 14 M200 50 Q180 50 160 14'/><path d='M60 62 V40 M80 62 V50 M100 62 V54 M120 62 V50 M140 62 V40' stroke-opacity='.12'/></svg>") bottom 0 center/130% auto no-repeat,var(--primary-dark)}
+.auth-card{border-radius:22px;box-shadow:0 20px 50px rgba(5,20,45,.3)}
+
+/* 橋のモチーフ：特典ページとお知らせの上に細い線画を置く */
+#page-reward::before,#page-news::before{content:"";display:block;height:34px;margin:-4px 0 6px;opacity:.5;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 34' fill='none' stroke='%231B6BCB' stroke-width='1.2' stroke-linecap='round'><path d='M0 30 H300'/><path d='M70 30 V4 M230 30 V4'/><path d='M70 4 Q150 40 230 4'/><path d='M0 22 Q35 22 70 4 M300 22 Q265 22 230 4'/></svg>") center/contain no-repeat}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <h1><i class="fa-solid fa-store"></i>たるみぽんぽんPay</h1>
+    <div style="display:flex;gap:8px"><button class="gps-chip" id="gpsChip" aria-label="歩行ポイント計測の切り替え"><i class="fa-solid fa-person-walking"></i><span id="gpsChipText">計測OFF</span></button><button class="gps-chip" id="logoutBtn" aria-label="ログアウト"><i class="fa-solid fa-right-from-bracket"></i></button></div>
+  </header>
+
+  <main>
+    <!-- 1. ホーム -->
+    <section id="page-home" class="page active">
+      <div class="balance">
+        <p class="label"><i class="fa-solid fa-coins"></i> <span id="uName"></span> さんのポイント</p>
+        <p class="amount"><span id="pts">0</span><small>pt</small></p>
+        <div class="row"><span><i class="fa-solid fa-shoe-prints"></i> 本日歩いた距離</span><b id="dist">0.00 km</b></div>
+        <div class="row" style="border:0;margin:0;padding-top:6px"><span>本日の歩行pt</span><b id="walkPt">0 / 30</b></div>
+        <div class="progress"><i id="walkBar"></i></div>
+      </div>
+      <p class="gps-text" id="gpsText">計測OFF：右上のボタンで歩行ポイントを開始</p>
+
+      <div id="campaign"></div>
+      <div class="quick">
+        <button class="q-btn" data-go="qr"><span class="q-ico"><i class="fa-solid fa-qrcode"></i></span>QRスキャン</button>
+        <button class="q-btn" data-go="map"><span class="q-ico"><i class="fa-solid fa-map-location-dot"></i></span>店舗マップ</button>
+        <button class="q-btn" data-go="reward"><span class="q-ico"><i class="fa-solid fa-gift"></i></span>特典交換</button>
+        <button class="q-btn" id="quickGps"><span class="q-ico"><i class="fa-solid fa-person-walking"></i></span><span id="quickGpsText">歩行開始</span></button>
+      </div>
+      <div class="title"><span>歩いた距離</span><span style="display:flex;gap:6px"><button class="chip on" data-hist="7">7日</button><button class="chip" data-hist="30">30日</button></span></div>
+      <div class="card" id="histCard"></div>
+      <div class="title"><span>おすすめのお店</span><a class="sub" href="#" data-go="news">お知らせ ›</a></div>
+      <div id="recs"></div>
+      <div class="title"><span>ポイント履歴</span></div>
+      <div class="card" id="logs"></div>
+      <div class="card" style="text-align:center"><button class="link" id="tourBtn" style="margin:0 0 10px">使い方を見る</button><span class="sub">言語 / Language</span><br><select class="langsel langSel" aria-label="Language"><option value="ja">日本語</option><option value="en">English</option></select></div>
+    </section>
+
+    <!-- 2. マップ -->
+    <section id="page-map" class="page">
+      <div class="title"><span><i class="fa-solid fa-map-pin" style="color:var(--primary-color)"></i> 垂水商店街マップ</span><span class="sub">ピンをタップ</span></div>
+      <div class="seg" id="mapSeg"><button class="on" data-view="map">地図</button><button data-view="list">一覧</button></div>
+      <div class="chips" id="mapChips"></div>
+      <div id="map"></div>
+      <div id="storeList" hidden></div>
+    </section>
+
+    <!-- 3. QR -->
+    <section id="page-qr" class="page">
+      <div class="title"><span><i class="fa-solid fa-qrcode" style="color:var(--primary-color)"></i> 店頭QRスキャン</span></div>
+      <div class="qr-box" id="qrBox"><video id="video" playsinline muted></video><canvas id="canvas" hidden></canvas><div class="qr-frame"></div><div class="qr-line"></div></div>
+      <p class="gps-text" id="qrMsg" style="text-align:center;margin-bottom:12px">店舗のQRコードを枠に合わせてください</p>
+      <button class="btn btn-primary" id="camBtn"><i class="fa-solid fa-camera"></i>カメラを起動する</button>
+      <div class="card" id="demoBox" style="margin-top:16px;background:#EAF2FF">
+        <p class="card-title" style="margin-bottom:8px"><i class="fa-solid fa-vial"></i> デモ用（カメラなしで試す）</p>
+        <div id="demoBtns" style="display:grid;gap:8px"></div>
+      </div>
+    </section>
+
+    <!-- 4. お知らせ -->
+    <section id="page-news" class="page">
+      <div class="title"><span><i class="fa-solid fa-bullhorn" style="color:var(--primary-color)"></i> 商店街ニュース</span></div>
+      <div id="newsList"></div>
+    </section>
+
+    <!-- 5. 特典 -->
+    <section id="page-reward" class="page">
+      <div class="title"><span><i class="fa-solid fa-gift" style="color:var(--primary-color)"></i> 特典交換</span><span style="color:var(--primary-color)">所持 <b id="pts2">0</b>pt</span></div>
+      <div class="seg" id="rwSeg"><button class="on" data-rw="ex">交換</button><button data-rw="collect">スタンプ・バッジ</button></div>
+      <div id="rw-ex">
+      <div id="rewardList"></div>
+      <div class="title"><span><i class="fa-solid fa-ticket" style="color:var(--primary-color)"></i> 持っているチケット</span></div>
+      <div id="tickets"></div>
+      </div>
+      <div id="rw-collect" hidden>
+        <div class="title" style="margin-top:0"><span>スタンプラリー</span></div>
+        <div class="card" id="stampCard"></div>
+        <div class="title"><span>バッジ</span><a class="sub" href="#" data-go="badges" data-rw="collect">一覧を見る ›</a></div>
+        <div class="card" id="badgeSummary"></div>
+      </div>
+    </section>
+    <!-- バッジ一覧（メニューには出さず、ホームから開く） -->
+    <section id="page-badges" class="page">
+      <button class="chip" data-go="reward" data-rw="collect" style="margin-bottom:12px">← 特典</button>
+      <div class="title"><span><i class="fa-solid fa-medal" style="color:var(--primary-color)"></i> バッジ</span></div>
+      <div class="badges" id="badgeBox"></div>
+    </section>
+  </main>
+
+  <nav class="nav" aria-label="メインメニュー">
+    <button data-go="home" class="active"><i class="fa-solid fa-house"></i>ホーム</button>
+    <button data-go="map"><i class="fa-solid fa-map-location-dot"></i>マップ</button>
+    <button data-go="qr"><i class="fa-solid fa-qrcode"></i>QR</button>
+    <button data-go="news"><i class="fa-solid fa-newspaper"></i>お知らせ<span class="dot" id="newsDot" hidden></span></button>
+    <button data-go="reward"><i class="fa-solid fa-gift"></i>特典</button>
+  </nav>
+
+  <!-- ログイン／新規登録 -->
+  <div class="auth" id="auth"><form class="auth-card" id="authForm">
+    <h2>たるみぽんぽんPay</h2><p class="sub" style="text-align:center" id="authSub">ログイン</p>
+    <label class="field" id="aNameWrap">名前<input id="aName" autocomplete="name" maxlength="20"></label>
+    <div class="field">誕生日<div class="bd-sel"><select id="aY" required aria-label="年"></select><select id="aM" required aria-label="月"></select><select id="aD" required aria-label="日"></select></div><input id="aBd" type="hidden"></div>
+    <label class="field">パスワード（4文字以上）<input id="aPw" type="password" autocomplete="current-password" required minlength="4"></label>
+    <p class="err" id="aErr" role="alert"></p>
+    <button class="btn btn-primary" id="aBtn">ログイン</button>
+    <button type="button" class="link" id="aSwitch">はじめての方は新規登録</button>
+    <div style="text-align:center"><select class="langsel langSel" aria-label="Language"><option value="ja">日本語</option><option value="en">English</option></select></div>
+  </form></div>
+
+  <!-- 管理者画面 -->
+  <div class="admin" id="admin">
+    <div class="admin-head"><b><i class="fa-solid fa-user-shield"></i> 管理者画面</b><button class="gps-chip" id="adminOut">ログアウト</button></div>
+    <div class="admin-in">
+      <div class="admin-tabs"><button class="active" data-at="users">利用者</button><button data-at="news">お知らせ</button><button data-at="reward">特典</button><button data-at="qr">お店・QR</button><button data-at="camp">キャンペーン</button><button data-at="stats">集計</button></div>
+      <div id="at-users">
+        <div class="sum" id="sum"></div>
+        <input class="search" id="uSearch" placeholder="名前で検索" aria-label="名前で検索">
+        <div id="uList" style="margin-top:12px"></div>
+      </div>
+      <div id="at-news" hidden>
+        <button class="btn btn-primary btn-sm" data-c="news-add" style="width:auto;margin-bottom:12px"><i class="fa-solid fa-plus"></i> お知らせを追加</button>
+        <div id="newsAdmin"></div>
+      </div>
+      <div id="at-reward" hidden>
+        <button class="btn btn-primary btn-sm" data-c="rw-add" style="width:auto;margin-bottom:12px"><i class="fa-solid fa-plus"></i> 特典を追加</button>
+        <div id="rwAdmin"></div>
+      </div>
+      <div id="at-camp" hidden><div class="card">
+        <p class="card-title">ポイント倍率キャンペーン</p>
+        <label class="field">名前（例：秋のポイント2倍）<input id="cL" maxlength="30"></label>
+        <label class="field">倍率（1で通常）<input id="cM" type="number" min="1" max="10" step="1"></label>
+        <label class="field">開始日<input id="cF" type="date"></label>
+        <label class="field">終了日<input id="cT" type="date"></label>
+        <p class="card-title" style="margin-top:16px">スタンプラリー</p>
+        <label class="field">スタンプの数（この数で達成・QR1回で1個）<input id="cN" type="number" min="1" max="30" step="1"></label>
+        <label class="field">達成ボーナス（pt）<input id="cB" type="number" min="0" step="1"></label>
+        <button class="btn btn-primary" id="campSave" style="margin-top:14px">保存する</button>
+      </div></div>
+      <div id="at-stats" hidden><div id="statsBox"></div></div>
+      <div id="at-qr" hidden>
+        <p class="sub no-print">お店を追加するとQRコードが自動で作られます。印刷して各お店に掲示してください。</p>
+        <div class="no-print" style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" data-c="st-add" style="width:auto"><i class="fa-solid fa-plus"></i> お店を追加</button><button class="btn btn-outline btn-sm" style="width:auto" onclick="window.print()"><i class="fa-solid fa-print"></i> 印刷</button></div>
+        <p class="sub no-print" style="margin-top:12px">地図をタップすると、その場所にお店を追加できます。ピンをタップすると編集できます。</p>
+        <div id="adminMap" class="no-print"></div>
+        <div class="qr-grid" id="qrGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 初めて使う人への案内 -->
+  <div class="overlay" id="tour" role="dialog" aria-modal="true" aria-label="使い方">
+    <div class="modal tour">
+      <div class="tour-ico" id="tourIco"></div>
+      <h3 id="tourTitle"></h3>
+      <div class="m-body" id="tourBody"></div>
+      <div class="tour-dots" id="tourDots"></div>
+      <div class="m-foot"><button class="btn btn-outline" id="tourSkip">スキップ</button><button class="btn btn-primary" id="tourNext">次へ</button></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay" role="dialog" aria-modal="true">
+    <div class="modal"><h3 id="mTitle"></h3><div class="m-body" id="mBody"></div><div class="m-foot" id="mFoot"></div></div>
+  </div>
+</div>
+
+<script>
+/* ==================== 設定とデータ ==================== */
+const STATION = { lat: 34.6293, lng: 135.0531 }; // 垂水駅
+// 歩行ポイントの対象範囲＝垂水区全域（おおよその四角形。ずれる場合は数値を調整してください）
+const TARUMI_BOUNDS = { south: 34.610, north: 34.685, west: 134.985, east: 135.095 };
+const inTarumi = p => p.lat >= TARUMI_BOUNDS.south && p.lat <= TARUMI_BOUNDS.north && p.lng >= TARUMI_BOUNDS.west && p.lng <= TARUMI_BOUNDS.east;
+const M_PER_PT = 100;       // 100mで1pt
+const WALK_CAP = 30;        // 歩行ptの1日上限
+const SHOW_DEMO = true;     // 本番公開時は false にするとデモボタンが消えます
+
+// QRの中身は「TARUMI:店舗ID」（例 TARUMI:tsuruya）
+const STORES = [
+  { id:'tsuruya', name:'垂水和菓子 つるや', cat:'和菓子', lat:34.6298, lng:135.0535, pt:10, desc:'名物「ぽんぽん煎餅」と四季の和菓子' },
+  { id:'uoichi',  name:'垂水海鮮 魚市',     cat:'飲食店', lat:34.6288, lng:135.0520, pt:15, desc:'昼網の新鮮な魚介と地酒' },
+  { id:'cafe',    name:'ぽんぽんカフェ',     cat:'カフェ', lat:34.6305, lng:135.0542, pt:10, desc:'自家焙煎コーヒーと焼きたてパン' },
+  { id:'zakka',   name:'垂水レトロ雑貨',     cat:'雑貨',   lat:34.6280, lng:135.0550, pt:10, desc:'ハンドメイドと昭和レトロ雑貨' },
+  { id:'info',    name:'垂水商店街案内所',   cat:'案内所', lat:34.6293, lng:135.0531, pt:20, desc:'イベント情報とポイント拠点' }
+];
+const NEWS = [
+  { title:'秋のポイント2倍キャンペーン！', tag:'イベント', cls:'tag-primary', date:'2026/10/01', sum:'期間中、加盟店でのQRポイントが2倍に！', text:'10月31日まで、加盟店でQRを読み取るとポイントが2倍。\nぜひ商店街へお越しください。' },
+  { title:'海風ナイトマーケット開催決定', tag:'お知らせ', cls:'tag-accent', date:'2026/09/28', sum:'垂水駅前広場に屋台と音楽ステージが登場！', text:'11月上旬、垂水駅前広場で開催します。\n地元グルメやハンドメイド雑貨が集まります。' },
+  { title:'新規加盟店「ぽんぽんカフェ」オープン', tag:'新店情報', cls:'tag-gray', date:'2026/09/20', sum:'自家焙煎珈琲と焼きたてパンのお店です。', text:'商店街北入口付近にオープンしました。\n来店QRで10pt獲得できます。' }
+];
+const REWARDS = [
+  { id:'r1', name:'商店街500円お買い物券', cost:100, desc:'全加盟店で使える500円分のチケット' },
+  { id:'r2', name:'ぽんぽんカフェ ドリンク1杯券', cost:50, desc:'ブレンドコーヒーまたは紅茶1杯' },
+  { id:'r3', name:'魚市 ワンドリンクサービス券', cost:30, desc:'お食事の注文時にワンドリンク' }
+];
+
+const SETTINGS = { mult: 1, from: '', to: '', label: '', rallyNeed: 10, rallyBonus: 20 };   // キャンペーンとスタンプラリー（管理者が変更）
+let STOCK = {};   // 特典の残り枚数（設定した特典だけ）
+
+/* ==================== 共通ユーティリティ ==================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const today = () => new Date().toLocaleDateString('sv-SE'); // 例 2026-10-05
+
+/* ==================== データ保存（DB） ==================== */
+// 全員で共有するには Firebase Realtime Database のURLを入れます。空のままだと、この端末の中だけに保存します（テスト用）。
+const FIREBASE_URL = 'https://apuri-1442d-default-rtdb.asia-southeast1.firebasedatabase.app'; // Realtime DatabaseのURL（空にするとこの端末内だけに保存）
+const ADMIN_PASSWORD = 'admin';          // 新規登録でこのパスワードを入れると管理者になります
+// Firebase Authentication（メール＋パスワード）を使います。メールは「誕生日＋パスワード」から自動で作る見えないIDです。
+const FB_API_KEY = 'AIzaSyCkSZLQCCQW2WqnKi15teeasMVjWOtxKDs';
+const AUTH = { token: null, refresh: null, uid: null, exp: 0 };
+function setAuth(d) {
+  AUTH.token = d.idToken; AUTH.refresh = d.refreshToken; AUTH.uid = d.localId; AUTH.exp = Date.now() + (+d.expiresIn || 3600) * 1000;
+  localStorage.setItem('tarumiRT', AUTH.refresh);
+}
+function clearAuth() { AUTH.token = AUTH.refresh = AUTH.uid = null; AUTH.exp = 0; localStorage.removeItem('tarumiRT'); }
+async function idCall(kind, body) {
+  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:${kind}?key=${FB_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return r.json();
+}
+async function token(force) { // 有効なIDトークン（期限が近ければ更新）
+  if (!force && AUTH.token && Date.now() < AUTH.exp - 60000) return AUTH.token;
+  if (!AUTH.refresh) throw new Error('noauth');
+  const r = await fetch('https://securetoken.googleapis.com/v1/token?key=' + FB_API_KEY, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(AUTH.refresh) });
+  const d = await r.json(); if (!r.ok) throw new Error('refresh');
+  setAuth({ idToken: d.id_token, refreshToken: d.refresh_token, localId: d.user_id, expiresIn: d.expires_in });
+  return AUTH.token;
+}
+const DB = {
+  async url(p) { return `${FIREBASE_URL}/tarumi/${p}.json?auth=${await token()}`; },
+  async get(p) { const r = await fetch(await this.url(p)); if (!r.ok) throw new Error('db'); return r.json(); },
+  async set(p, v) { const r = await fetch(await this.url(p), { method: 'PUT', body: JSON.stringify(v) }); if (!r.ok) throw new Error('db'); },
+  async del(p) { const r = await fetch(await this.url(p), { method: 'DELETE' }); if (!r.ok) throw new Error('db'); },
+  async inc(p, n = 1) { try { await fetch(await this.url(p), { method: 'PUT', body: JSON.stringify({ '.sv': { increment: n } }) }); } catch (e) {} }, // 集計用の加算
+  async users() { return (await this.get('users')) || {}; }
+};
+async function withRole(u) { u.role = (await DB.get('admins/' + AUTH.uid)) === true ? 'admin' : 'user'; return u; }
+// DBの構成： users/<uid>=利用者  admins/<uid>=管理者  adj/<uid>=ポイント調整  content/*=お知らせ等  stock/<id>=特典の残り枚数  stats/*=集計
+async function sha(str) { // パスワードはそのまま保存せず、ハッシュにして保存
+  if (window.crypto && crypto.subtle) {
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+  }
+  let h = 5381; for (const c of str) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0; return 'x' + h.toString(16); // HTTPSでない時の簡易代用
+}
+
+/* ==================== ログイン中の利用者データ ==================== */
+const S = {};   // ログイン中の人のデータ（ポイント・チケットなど）
+function normalize(s) {
+  s.points = s.points || 0; s.tickets = s.tickets || []; s.log = s.log || []; s.scanned = s.scanned || {};
+  s.dist = s.dist || 0; s.walkPt = s.walkPt || 0; s.rem = s.rem || 0;
+  if (!Array.isArray(s.stamps)) s.stamps = Object.keys(s.stamps || {}); s.visited = s.visited || {};   // 以前の形式（店ごとの記録）も引き継ぐ
+  s.badges = s.badges || {}; s.seenNews = s.seenNews || [];
+  s.hist = s.hist || {}; s.days = s.days || {}; s.favs = s.favs || {}; s.exchCount = s.exchCount || 0;
+  if (s.earned === undefined) s.earned = s.points;   // 以前からの利用者は、いまの所持ポイントを獲得済みとして数える
+  if (s.day === today() && s.dist && s.hist[s.day] === undefined) s.hist[s.day] = s.dist;   // 今日のこれまでの記録を履歴に引き継ぐ
+  Object.keys(s.hist).sort().slice(0, -120).forEach(k => delete s.hist[k]); Object.keys(s.days).sort().slice(0, -120).forEach(k => delete s.days[k]);   // 古い記録は消す
+  if (s.day !== today()) { s.day = today(); s.dist = 0; s.walkPt = 0; s.rem = 0; s.scanned = {}; } // 日付が変わったら今日の記録をリセット
+}
+function setUser(u) { Object.keys(S).forEach(k => delete S[k]); if (u) { Object.assign(S, u); normalize(S); } }
+function save() { if (S.uid) DB.set('users/' + S.uid, S).catch(() => {}); }
+
+/* ==================== ログイン・新規登録 ==================== */
+let mode = 'login';
+function setMode(m) {
+  mode = m;
+  $('#aNameWrap').style.display = m === 'login' ? 'none' : '';
+  $('#aName').required = m !== 'login';
+  $('#authSub').textContent = m === 'login' ? 'ログイン' : '新規アカウント作成';
+  $('#aBtn').textContent = m === 'login' ? 'ログイン' : 'アカウントを作る';
+  $('#aSwitch').textContent = m === 'login' ? 'はじめての方は新規登録' : 'ログイン画面にもどる';
+  $('#aPw').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+  $('#aErr').textContent = '';
+}
+$('#aSwitch').addEventListener('click', () => setMode(mode === 'login' ? 'signup' : 'login'));
+$('#authForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('#aErr'); err.textContent = '';
+  const name = $('#aName').value.trim(), bd = $('#aBd').value, pw = $('#aPw').value;
+  try {
+    const email = (await sha('login|' + bd + '|' + pw)).slice(0, 24) + '@tarumi.example';   // 誕生日＋パスワードから作る見えないID
+    const fbpw = await sha('fbpw|' + bd + '|' + pw);
+    const d = await idCall(mode === 'signup' ? 'signUp' : 'signInWithPassword', { email, password: fbpw, returnSecureToken: true });
+    if (d.error) {
+      const m = d.error.message || '';
+      err.textContent = m.startsWith('EMAIL_EXISTS') ? 'この誕生日とパスワードの組み合わせは使えません。別のパスワードにしてください。'
+        : /INVALID|EMAIL_NOT_FOUND/.test(m) ? '誕生日かパスワードが違います。'
+        : m.startsWith('TOO_MANY') ? 'しばらくしてからもう一度お試しください。'
+        : m.startsWith('OPERATION_NOT_ALLOWED') ? 'Firebaseで「メール／パスワード」認証が有効になっていません。' : '登録できませんでした（' + m + '）';
+      return;
+    }
+    setAuth(d);
+    let u, isAdmin = false;
+    if (mode === 'signup') {
+      if (pw === ADMIN_PASSWORD) { // 管理者に登録できるのは、最初の1人だけ（Firebaseのルールで制限）
+        try { await DB.set('admins/' + AUTH.uid, true); isAdmin = true; }
+        catch (x) { await idCall('delete', { idToken: AUTH.token }); clearAuth(); return void (err.textContent = '管理者はすでに登録されています。別のパスワードにしてください。'); }
+      }
+      u = { uid: AUTH.uid, name, birthday: bd, role: isAdmin ? 'admin' : 'user', points: 0, created: today() };
+      await DB.set('users/' + AUTH.uid, u);
+    } else {
+      u = await DB.get('users/' + AUTH.uid);
+      if (!u) { clearAuth(); return void (err.textContent = 'このアカウントは削除されています。'); }
+    }
+    enter(await withRole(u));
+  } catch (x) { err.textContent = '通信エラーです。もう一度お試しください。'; }
+});
+function enter(u) { // ログイン後：管理者なら管理者画面、それ以外はアプリ本体
+  setUser(u);
+  $('#auth').classList.remove('show'); $('#aPw').value = '';
+  if (S.role === 'admin') { $('#admin').classList.add('show'); loadAdmin(); }
+  else { $('#admin').classList.remove('show'); save(); render(); go('home'); refresh(); if (!S.tourDone) setTimeout(() => openTour(false), 400); }
+}
+function logout() {
+  stopGps(); stopCamera();
+  clearAuth();
+  setUser(null);
+  $('#admin').classList.remove('show'); $('#auth').classList.add('show'); setMode('login');
+}
+$('#logoutBtn').addEventListener('click', logout);
+$('#adminOut').addEventListener('click', logout);
+
+// 管理者のポイント調整を受け取る／削除された利用者はログアウト（20秒ごと・アプリを開いた時）
+async function refresh() {
+  if (!S.uid || S.role === 'admin') return;
+  try {
+    if (!(await DB.get('users/' + S.uid))) return logout();
+    await loadContent(); renderStatic(); render();   // 管理者が変更した内容を反映
+    const adj = await DB.get('adj/' + S.uid);
+    if (adj) {
+      [].concat(adj).filter(Boolean).forEach(a => { S.points = Math.max(0, S.points + a.pt); S.log.unshift({ d: a.d, text: a.text, pt: a.pt }); });
+      S.log = S.log.slice(0, 30); save(); await DB.del('adj/' + S.uid); render();
+    }
+  } catch (e) {}
+}
+setInterval(refresh, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+
+/* ==================== 管理者画面 ==================== */
+let allUsers = {};
+async function loadAdmin() {
+  try { allUsers = await DB.users(); } catch (e) { return modal('通信エラー', '利用者一覧を読み込めませんでした。'); }
+  await loadContent(); renderAdmin(); renderAdminContent();
+}
+function renderAdmin() {
+  const list = Object.values(allUsers).filter(u => u.role !== 'admin');
+  const q = $('#uSearch').value.trim();
+  $('#sum').innerHTML = `<div><b>${list.length}</b>登録者</div><div><b>${list.reduce((a, u) => a + (u.points || 0), 0)}</b>総ポイント</div><div><b>${list.reduce((a, u) => a + (u.tickets || []).length, 0)}</b>未使用チケット</div>`;
+  const shown = list.filter(u => u.name.includes(q)).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  $('#uList').innerHTML = shown.length ? shown.map(u => `
+    <div class="card"><div class="u-row"><div><span class="card-title">${esc(u.name)}</span><p class="card-date" style="margin:0">誕生日 ${esc(u.birthday)}・チケット ${(u.tickets || []).length}枚</p></div><span class="tag tag-primary">${u.points || 0} pt</span></div>
+    <div class="u-btns"><button class="btn btn-primary btn-sm" data-adj="${u.uid}">ポイント調整</button><button class="btn btn-outline btn-sm" data-rm="${u.uid}">削除</button></div></div>`).join('')
+    : '<div class="card empty">該当する利用者がいません</div>';
+}
+$('#uSearch').addEventListener('input', renderAdmin);
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-adj],[data-pw],[data-rm],[data-at]');
+  if (!t) return;
+  if (t.dataset.at) { // 管理者画面のタブ切り替え
+    document.querySelectorAll('.admin-tabs button').forEach(b => b.classList.toggle('active', b === t));
+    document.querySelectorAll('[id^=at-]').forEach(el => { el.hidden = el.id !== 'at-' + t.dataset.at; });
+    renderAdminContent(); if (t.dataset.at === 'stats') renderStats(); if (t.dataset.at === 'qr') initAdminMap();
+    return;
+  }
+  const u = allUsers[t.dataset.adj || t.dataset.pw || t.dataset.rm];
+  if (!u) return;
+  if (t.dataset.adj) adjustPoints(u); else removeUser(u);
+});
+function adjustPoints(u) {
+  modal(u.name + ' さんのポイント', `現在 ${u.points || 0} pt\n増やすときは 20、減らすときは -10 のように入力します。<label class="field">ポイント<input id="adjV" type="number" step="1"></label><label class="field">理由（履歴に残ります）<input id="adjR" maxlength="30" placeholder="例：イベント参加"></label>`, [
+    { label: 'キャンセル', cls: 'btn-outline' },
+    { label: '反映する', fn: async () => {
+      const n = parseInt($('#adjV').value, 10); if (!n) return;
+      try {
+        const list = [].concat((await DB.get('adj/' + u.uid)) || []);
+        list.push({ pt: n, d: today(), text: $('#adjR').value.trim() || '管理者による調整' });
+        await DB.set('adj/' + u.uid, list);
+        u.points = Math.max(0, (u.points || 0) + n); renderAdmin();
+        modal('登録しました', '利用者が次にアプリを開く（最大20秒）と反映されます。');
+      } catch (e) { modal('通信エラー', '反映できませんでした。'); }
+    } }
+  ]);
+}
+function removeUser(u) {
+  modal('利用者を削除しますか？', esc(u.name) + ' さんのアカウントとポイントがすべて消えます。\nこの操作は取り消せません。', [
+    { label: 'やめる', cls: 'btn-outline' },
+    { label: '削除する', fn: async () => {
+      try { await DB.del('users/' + u.uid); await DB.del('adj/' + u.uid); delete allUsers[u.uid]; renderAdmin(); }
+      catch (e) { modal('通信エラー', '削除できませんでした。'); }
+    } }
+  ]);
+}
+/* ==================== お知らせ・特典・お店(QR)の編集（管理者） ==================== */
+const CONTENT = { news: NEWS, rewards: REWARDS, stores: STORES };   // DBの content/<名前> に保存
+const LIST = { news: ['news', NEWS, 'お知らせ'], rw: ['rewards', REWARDS, '特典'], st: ['stores', STORES, 'お店'] };
+const CANCEL = { label: 'キャンセル', cls: 'btn-outline' };
+const newId = p => p + Math.random().toString(36).slice(2, 8);
+async function loadContent() { // 変更済みの内容があれば、初期データを置き換える（配列は文字列にして保存）
+  for (const k of Object.keys(CONTENT)) {
+    try { const v = await DB.get('content/' + k); if (typeof v === 'string') CONTENT[k].splice(0, CONTENT[k].length, ...JSON.parse(v)); } catch (e) {}
+  }
+  try { const v = await DB.get('content/settings'); if (typeof v === 'string') Object.assign(SETTINGS, JSON.parse(v)); } catch (e) {}
+  try { STOCK = (await DB.get('stock')) || {}; } catch (e) {}
+}
+async function saveContent(k) {
+  try {
+    await DB.set('content/' + k, JSON.stringify(CONTENT[k]));
+    renderStatic(); renderAdminContent(); drawMarkers();
+  } catch (e) { modal('通信エラー', '保存できませんでした。もう一度お試しください。'); }
+}
+const editBtns = (k, i) => `<div class="u-btns no-print"><button class="btn btn-primary btn-sm" data-c="${k}-edit" data-i="${i}">編集</button><button class="btn btn-outline btn-sm" data-c="${k}-del" data-i="${i}">削除</button></div>`;
+function renderAdminContent() {
+  $('#newsAdmin').innerHTML = NEWS.map((n, i) => `<div class="card"><div class="u-row"><div><span class="card-title">${esc(n.title)}</span><p class="card-date" style="margin:0">${esc(n.date)}</p></div><span class="tag ${esc(n.cls)}">${esc(n.tag)}</span></div>${editBtns('news', i)}</div>`).join('') || '<div class="card empty">お知らせはありません</div>';
+  $('#rwAdmin').innerHTML = REWARDS.map((r, i) => `<div class="card"><div class="u-row"><div><span class="card-title">${esc(r.name)}</span><p class="card-date" style="margin:0">${esc(r.desc)}</p></div><span class="tag tag-primary">${r.cost} pt</span></div><p class="card-date">${r.until ? '期限 ' + esc(r.until) + '　' : ''}${STOCK[r.id] !== undefined ? '残り ' + STOCK[r.id] + ' 枚' : '枚数 無制限'}</p>${editBtns('rw', i)}</div>`).join('') || '<div class="card empty">特典はありません</div>';
+  fillSettings();
+  drawQr();
+}
+function drawQr() { // お店ごとのQRコード（中身は TARUMI:店舗ID）
+  $('#qrGrid').innerHTML = STORES.map((s, i) => `<div class="card qr-item"><b>${esc(s.name)}</b><div id="qr-${esc(s.id)}"></div><p class="card-date">TARUMI:${esc(s.id)}（${s.pt}pt）</p>${editBtns('st', i)}</div>`).join('') || '<div class="card empty">お店がありません</div>';
+  STORES.forEach(s => new QRCode($('#qr-' + s.id), { text: 'TARUMI:' + s.id, width: 160, height: 160 }));
+}
+const fld = (label, html) => `<label class="field">${label}${html}</label>`;
+function newsForm(i) {
+  const n = i == null ? { tag: 'お知らせ', date: today().replace(/-/g, '/') } : NEWS[i];
+  modal(i == null ? 'お知らせを追加' : 'お知らせを編集', [
+    fld('タイトル', `<input id="nT" maxlength="40" value="${esc(n.title || '')}">`),
+    fld('種類', `<select id="nG">${['イベント', 'お知らせ', '新店情報'].map(g => `<option ${g === n.tag ? 'selected' : ''}>${g}</option>`).join('')}</select>`),
+    fld('日付', `<input id="nD" maxlength="10" value="${esc(n.date)}">`),
+    fld('一覧に出す短い説明', `<input id="nS" maxlength="60" value="${esc(n.sum || '')}">`),
+    fld('詳細の本文', `<textarea id="nB" rows="4">${esc(n.text || '')}</textarea>`)
+  ].join(''), [CANCEL, { label: '保存', fn: async () => {
+    const title = $('#nT').value.trim(); if (!title) return modal('入力してください', 'タイトルが空です。');
+    const tag = $('#nG').value;
+    const item = { title, tag, cls: { 'イベント': 'tag-primary', 'お知らせ': 'tag-accent' }[tag] || 'tag-gray', date: $('#nD').value.trim(), sum: $('#nS').value.trim(), text: $('#nB').value.trim() };
+    if (i == null) NEWS.unshift(item); else NEWS.splice(i, 1, item);
+    await saveContent('news');
+  } }]);
+}
+function rewardForm(i) {
+  const r = i == null ? {} : REWARDS[i], cur = r.id !== undefined ? STOCK[r.id] : undefined;
+  modal(i == null ? '特典を追加' : '特典を編集', [
+    fld('特典の名前', `<input id="rN" maxlength="30" value="${esc(r.name || '')}">`),
+    fld('必要ポイント', `<input id="rC" type="number" min="1" step="1" value="${r.cost || 50}">`),
+    fld('説明', `<input id="rD" maxlength="50" value="${esc(r.desc || '')}">`),
+    fld('交換できる期限（空欄＝無期限）', `<input id="rU" type="date" value="${esc(r.until || '')}">`),
+    fld('残りの枚数（空欄＝無制限）', `<input id="rS" type="number" min="0" step="1" value="${cur === undefined ? '' : cur}">`)
+  ].join(''), [CANCEL, { label: '保存', fn: async () => {
+    const name = $('#rN').value.trim(), cost = parseInt($('#rC').value, 10);
+    if (!name || !(cost > 0)) return modal('入力を確認してください', '名前と、1以上のポイントを入れてください。');
+    const id = r.id || newId('r'), item = { id, name, cost, desc: $('#rD').value.trim(), until: $('#rU').value }, sv = $('#rS').value.trim();
+    try {
+      if (sv === '') { if (STOCK[id] !== undefined) { await DB.del('stock/' + id); delete STOCK[id]; } }
+      else { const n = Math.max(0, parseInt(sv, 10) || 0); await DB.set('stock/' + id, n); STOCK[id] = n; }
+    } catch (e) { return modal('通信エラー', '枚数を保存できませんでした。'); }
+    if (i == null) REWARDS.push(item); else REWARDS.splice(i, 1, item);
+    await saveContent('rewards');
+  } }]);
+}
+let pendingPos = null;   // 管理者が地図でタップした場所
+function storeForm(i) {
+  const s0 = i == null ? { lat: pendingPos ? +pendingPos.lat.toFixed(6) : STATION.lat, lng: pendingPos ? +pendingPos.lng.toFixed(6) : STATION.lng, pt: 10 } : STORES[i];
+  pendingPos = null;
+  modal(i == null ? 'お店を追加（QRコードを発行）' : 'お店を編集', [
+    fld('お店の名前', `<input id="sN" maxlength="30" value="${esc(s0.name || '')}">`),
+    fld('種類（例：飲食店）', `<input id="sC" maxlength="10" value="${esc(s0.cat || '')}">`),
+    fld('獲得ポイント', `<input id="sP" type="number" min="0" step="1" value="${s0.pt}">`),
+    fld('説明', `<input id="sD" maxlength="50" value="${esc(s0.desc || '')}">`),
+    fld('開店時刻', `<input id="sO" type="time" value="${esc(s0.open || '')}">`),
+    fld('閉店時刻', `<input id="sE" type="time" value="${esc(s0.close || '')}">`),
+    fld('定休日', `<select id="sX"><option value="">なし</option>${'日月火水木金土'.split('').map((d, k) => `<option value="${k}" ${String(s0.closed) === String(k) ? 'selected' : ''}>${d}曜日</option>`).join('')}</select>`),
+    fld('電話番号', `<input id="sTel" type="tel" maxlength="20" value="${esc(s0.tel || '')}">`),
+    fld('写真のURL（https://…・空欄でもOK）', `<input id="sImg" type="url" value="${esc(s0.img || '')}">`),
+    fld('緯度', `<input id="sLat" type="number" step="any" value="${s0.lat}">`),
+    fld('経度', `<input id="sLng" type="number" step="any" value="${s0.lng}">`),
+    `<button type="button" class="btn btn-outline btn-sm" id="hereBtn" style="margin-top:10px"><i class="fa-solid fa-location-crosshairs"></i> いまの場所を入れる</button><span class="sub" id="hereMsg"> Googleマップで場所を長押しして座標をコピーする方法もあります</span>`
+  ].join(''), [CANCEL, { label: '保存', fn: async () => {
+    const name = $('#sN').value.trim(), lat = parseFloat($('#sLat').value), lng = parseFloat($('#sLng').value), pt = parseInt($('#sP').value, 10), img = $('#sImg').value.trim();
+    if (!name || !isFinite(lat) || !isFinite(lng) || !(pt >= 0)) return modal('入力を確認してください', '名前・ポイント・緯度経度を入れてください。');
+    if (img && !/^https?:\/\//.test(img)) return modal('入力を確認してください', '写真のURLは https:// から始めてください。');
+    const item = { id: s0.id || newId('s'), name, cat: $('#sC').value.trim() || 'お店', lat, lng, pt, desc: $('#sD').value.trim(), open: $('#sO').value, close: $('#sE').value, closed: $('#sX').value, tel: $('#sTel').value.trim(), img };   // 編集してもIDは変わらないので、印刷済みのQRはそのまま使えます
+    if (i == null) STORES.push(item); else STORES.splice(i, 1, item);
+    await saveContent('stores');
+  } }]);
+}
+function confirmDel(k, i) {
+  const [key, arr, label] = LIST[k], it = arr[i];
+  if (!it) return;
+  modal(label + 'を削除しますか？', esc(it.title || it.name) + (k === 'st' ? '\nこのお店のQRコードは使えなくなります。' : ''), [
+    CANCEL, { label: '削除する', fn: async () => { arr.splice(i, 1); await saveContent(key); } }
+  ]);
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('#hereBtn')) { // 現在地を緯度経度に入れる
+    if (!navigator.geolocation) return;
+    return navigator.geolocation.getCurrentPosition(
+      p => { $('#sLat').value = p.coords.latitude.toFixed(6); $('#sLng').value = p.coords.longitude.toFixed(6); $('#hereMsg').textContent = ' 入力しました'; },
+      () => { $('#hereMsg').textContent = ' 現在地を取得できませんでした'; });
+  }
+  const t = e.target.closest('[data-c]');
+  if (!t) return;
+  const [k, act] = t.dataset.c.split('-'), i = t.dataset.i === undefined ? null : +t.dataset.i;
+  if (act === 'del') return confirmDel(k, i);
+  ({ news: newsForm, rw: rewardForm, st: storeForm })[k](i);
+});
+
+function addPt(n, text) {
+  S.points += n; if (n > 0) S.earned = (S.earned || 0) + n;
+  S.log.unshift({ d: today(), text, pt: n });
+  S.log = S.log.slice(0, 30);
+  save(); render();
+}
+
+/* ==================== モーダル ==================== */
+function modal(title, html, actions = [{ label: 'OK' }]) {
+  $('#mTitle').textContent = title;
+  $('#mBody').innerHTML = html;
+  const f = $('#mFoot'); f.innerHTML = '';
+  actions.forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'btn ' + (a.cls || 'btn-primary');
+    b.textContent = a.label;
+    b.onclick = () => { closeModal(); if (a.fn) a.fn(); };
+    f.appendChild(b);
+  });
+  $('#overlay').classList.add('active');
+}
+function closeModal() { $('#overlay').classList.remove('active'); }
+$('#overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ==================== 画面描画 ==================== */
+function render() {
+  $('#uName').textContent = S.name || '';
+  $('#pts').textContent = S.points;
+  $('#pts2').textContent = S.points;
+  $('#dist').textContent = (S.dist / 1000).toFixed(2) + ' km';
+  $('#walkPt').textContent = S.walkPt + ' / ' + WALK_CAP;
+  $('#walkBar').style.width = (S.walkPt / WALK_CAP * 100) + '%';
+
+  $('#logs').innerHTML = S.log.length
+    ? S.log.slice(0, 5).map(l => `<div class="log"><span>${esc(l.text)}</span><b>${l.pt > 0 ? '+' : ''}${l.pt}pt</b></div>`).join('')
+    : '<p class="empty">まだ履歴がありません</p>';
+
+  $('#rewardList').innerHTML = REWARDS.map(r => `
+    <div class="card"><div class="card-head"><span class="card-title">${esc(r.name)}</span><span class="tag tag-primary">${r.cost} pt</span></div>
+    <p class="card-body">${esc(r.desc)}</p>
+    <button class="btn btn-primary btn-sm" style="margin-top:12px" data-ex="${r.id}" ${S.points < r.cost ? 'disabled' : ''}>${S.points < r.cost ? 'あと ' + (r.cost - S.points) + ' pt' : '交換する'}</button></div>`).join('');
+
+  $('#tickets').innerHTML = S.tickets.length
+    ? S.tickets.map(t => `<div class="card"><div class="card-head"><span class="card-title">${esc(t.title)}</span><span class="tag tag-accent">未使用</span></div>
+      <p class="card-date">獲得日 ${esc(t.date)}</p><button class="btn btn-outline btn-sm" style="margin-top:10px" data-use="${esc(t.id)}">店頭で提示する</button></div>`).join('')
+    : '<div class="card empty">チケットはありません</div>';
+}
+function renderStatic() {
+  $('#recs').innerHTML = STORES.slice(0, 3).map(s => `
+    <button class="card tap" data-store="${s.id}"><div class="card-head"><span class="card-title">${esc(s.name)}</span><span class="tag tag-accent">${s.pt}pt</span></div>
+    <p class="card-body">${esc(s.cat)}・${esc(s.desc)}</p></button>`).join('');
+  $('#newsList').innerHTML = NEWS.map((n, i) => `
+    <button class="card tap" data-news="${i}"><div class="card-head"><span class="card-title">${esc(n.title)}</span><span class="tag ${n.cls}">${esc(n.tag)}</span></div>
+    <p class="card-body">${esc(n.sum)}</p><p class="card-date">${n.date}</p></button>`).join('');
+  $('#demoBox').style.display = SHOW_DEMO ? '' : 'none';
+  $('#demoBtns').innerHTML = STORES.map(s => `<button class="btn btn-outline btn-sm" data-demo="${s.id}">${esc(s.name)}（${s.pt}pt）</button>`).join('');
+}
+
+/* ==================== 画面切り替えとクリック処理（まとめて管理） ==================== */
+let map = null;
+function go(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + id));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.go === (id === 'badges' ? 'reward' : id)));
+  window.scrollTo(0, 0);
+  if (id === 'map') { initMap(); setTimeout(() => map && map.invalidateSize(), 100); locateMe(); drawMarkers(); }
+  if (id !== 'qr') stopCamera();
+  if (id === 'news' && S.uid) { S.seenNews = NEWS.map(newsKey); save(); renderExtras(); }   // お知らせを開いたら既読にする
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-go],[data-news],[data-ex],[data-use],[data-demo],[data-rw]');
+  if (!t) return;
+  if (t.dataset.rw) setRwTab(t.dataset.rw); else if (t.dataset.go === 'reward') setRwTab('ex');   // 特典ページ：下のメニューから開くと「交換」から
+  if (t.dataset.go) { e.preventDefault(); go(t.dataset.go); }
+  else if (t.dataset.news) { const n = NEWS[t.dataset.news]; modal(n.title, esc(n.text) + '\n\n' + n.date); }
+  else if (t.dataset.ex) confirmExchange(t.dataset.ex);
+  else if (t.dataset.use) showTicket(t.dataset.use);
+  else if (t.dataset.demo) processQR('TARUMI:' + t.dataset.demo, true);
+});
+
+/* ==================== マップ（Leaflet） ==================== */
+let meMarker = null;
+function initMap() {
+  if (map) return;
+  map = L.map('map').setView([STATION.lat, STATION.lng], 16);
+  L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=ja&x={x}&y={y}&z={z}', { maxZoom: 20, attribution: '&copy; Google' }).addTo(map);
+  drawMarkers();
+  if (lastPos) updateMe(lastPos);
+}
+const mapFilter = { cat: '', openOnly: false, fav: false };
+function renderChips() {
+  const cats = [...new Set(STORES.map(x => x.cat).filter(Boolean))], on = c => c ? 'on' : '';
+  $('#mapChips').innerHTML = [`<button class="chip ${on(!mapFilter.cat && !mapFilter.openOnly && !mapFilter.fav)}" data-chip="all">すべて</button>`, `<button class="chip ${on(mapFilter.openOnly)}" data-chip="open">営業中のみ</button>`, `<button class="chip ${on(mapFilter.fav)}" data-chip="fav">★ お気に入り</button>`]
+    .concat(cats.map(c => `<button class="chip ${on(mapFilter.cat === c)}" data-chip="cat" data-v="${esc(c)}">${esc(c)}</button>`)).join('') + (mapView === 'map' ? '<span class="sub" style="white-space:nowrap">ピン：黄＝未訪問／青＝訪問済み</span>' : '');
+}
+let storeLayer = null;
+function drawMarkers() { // お店のピンを描く（絞り込み・営業中・訪問済みを反映）
+  renderChips(); renderStoreList();
+  if (!map) return;
+  if (storeLayer) storeLayer.clearLayers(); else storeLayer = L.layerGroup().addTo(map);
+  STORES.filter(passFilter).forEach(x => {
+    const v = S.visited && S.visited[x.id], st = openState(x);
+    L.marker([x.lat, x.lng], { icon: L.divIcon({ className: '', html: `<div class="pin ${v ? 'v' : ''}"></div>`, iconSize: [26, 26], iconAnchor: [13, 26], popupAnchor: [0, -26] }) }).addTo(storeLayer).bindPopup(
+      `<div class="pop"><b>${esc(x.name)}</b>${esc(x.cat)}${st ? `<span class="op ${st === 'open' ? '' : 'x'}">${OPEN_LABEL[st]}</span>` : ''}<br>${esc(x.desc)}<br>QRで <b style="display:inline;color:#1366D6">${x.pt}pt</b> 獲得<br><button class="btn btn-primary btn-sm" style="margin-top:6px" data-store="${esc(x.id)}">詳細</button></div>`);
+  });
+}
+function locateMe() { // 初回は位置情報の許可確認が出る。許可→現在地、拒否・失敗→垂水商店街
+  if (!map) return;
+  const toStation = () => { map.setView([STATION.lat, STATION.lng], 16); renderStoreList(); };
+  if (!navigator.geolocation) return toStation();
+  navigator.geolocation.getCurrentPosition(p => {
+    const here = { lat: p.coords.latitude, lng: p.coords.longitude };
+    updateMe(here); map.setView([here.lat, here.lng], 16); renderStoreList();
+  }, toStation, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+}
+function updateMe(p) { userPos = { lat: p.lat, lng: p.lng }; // 現在地の青い丸
+  if (!map) return;
+  if (!meMarker) meMarker = L.circleMarker([p.lat, p.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#1366D6', fillOpacity: 1 }).addTo(map);
+  else meMarker.setLatLng([p.lat, p.lng]);
+}
+
+/* ==================== QR読み取り（jsQR） ==================== */
+let stream = null, scanning = false;
+async function startCamera() {
+  if (stream) return;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const v = $('#video'); v.srcObject = stream; await v.play();
+    scanning = true; $('#qrBox').classList.add('on'); $('#camBtn').style.display = 'none';
+    $('#qrMsg').textContent = 'QRコードを探しています…';
+    requestAnimationFrame(scanLoop);
+  } catch (e) {
+    stream = null;
+    modal('カメラを使えません', '設定でカメラを許可するか、HTTPSで開いてください。\nデモ用ボタンでも試せます。');
+  }
+}
+function stopCamera() {
+  scanning = false;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('#qrBox').classList.remove('on'); $('#camBtn').style.display = '';
+  $('#qrMsg').textContent = '店舗のQRコードを枠に合わせてください';
+}
+function scanLoop() {
+  if (!scanning) return;
+  const v = $('#video'), c = $('#canvas');
+  if (v.readyState === v.HAVE_ENOUGH_DATA) {
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    const img = ctx.getImageData(0, 0, c.width, c.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    if (code) { stopCamera(); processQR(code.data); return; }
+  }
+  requestAnimationFrame(scanLoop);
+}
+async function processQR(raw, demo) {
+  const m = /^TARUMI:(\w+)$/.exec(String(raw).trim());
+  const shop = m && STORES.find(s => s.id === m[1]);
+  if (!shop) return modal('対象外のQRです', 'このアプリ用のQRコードではありません。');
+  if (S.scanned[shop.id]) return modal('獲得済みです', esc(shop.name) + ' のポイントは今日すでに獲得済みです。\n同じお店は1日1回までです。');
+  if (NEAR_CHECK && !demo) { // QRの写真を遠くから使う不正を防ぐため、お店の近くにいるか確認
+    const ok = await isNear(shop);
+    if (ok !== true) return modal(ok === 'far' ? 'お店から離れています' : '位置情報が必要です', ok === 'far' ? 'お店の近くでQRを読み取ってください。' : 'ポイント不正防止のため、読み取り時に位置情報を使います。位置情報を許可してください。');
+  }
+  S.scanned[shop.id] = 1; S.visited[shop.id] = today(); S.scanTotal = (S.scanTotal || 0) + 1; markActive();
+  const m2 = mult(), pt = shop.pt * m2;
+  addPt(pt, shop.name + ' QR' + (m2 > 1 ? `（${m2}倍）` : ''));
+  DB.inc('stats/store/' + shop.id); DB.inc('stats/day/' + today() + '/scan');
+  let extra = '';
+  S.stamps.push(shop.id);                                          // スタンプを1つ押す（同じお店は1日1回）
+  if (S.stamps.length >= rallyNeed()) {
+    S.stamps = S.stamps.slice(rallyNeed()); S.rallyDone = (S.rallyDone || 0) + 1;
+    addPt(SETTINGS.rallyBonus, 'スタンプラリー達成');
+    extra += `<p class="big" style="font-size:1.1rem">🎉 スタンプラリー達成！ +${SETTINGS.rallyBonus} pt</p>`;
+  }
+  extra += badgeHtml(checkBadges());
+  save(); render();
+  modal('スキャン成功！', `<p style="text-align:center"><i class="fa-solid fa-circle-check" style="font-size:2.6rem;color:var(--ok)"></i></p><p style="text-align:center">${esc(shop.name)}</p><p class="big">+${pt} pt</p>${extra}`);
+}
+$('#camBtn').addEventListener('click', startCamera);
+
+/* ==================== 特典交換 ==================== */
+function confirmExchange(id) {
+  const r = REWARDS.find(x => x.id === id);
+  if (!r || S.points < r.cost) return;
+  modal('交換しますか？', `<b>${esc(r.name)}</b> を ${r.cost}pt で交換します。`, [
+    { label: 'キャンセル', cls: 'btn-outline' },
+    { label: '交換する', fn: async () => {
+      if (S.points < r.cost) return;
+      if (!(await takeStock(r))) return;   // 期限と在庫の確認
+      S.exchCount = (S.exchCount || 0) + 1;
+      S.tickets.push({ id: 'TICK-' + Math.floor(100000 + Math.random() * 900000), title: r.name, date: new Date().toLocaleDateString('ja-JP') });
+      addPt(-r.cost, r.name + ' と交換');
+      modal('交換完了！', 'チケットは下の「持っているチケット」から使えます。');
+    } }
+  ]);
+}
+function showTicket(id) {
+  const t = S.tickets.find(x => x.id === id);
+  if (!t) return;
+  modal('チケット', `<b>${esc(t.title)}</b><div class="code">${esc(t.id)}</div>お店のスタッフに画面を見せてください。\nスタッフが確認してから「使用済みにする」を押します。`, [
+    { label: '閉じる', cls: 'btn-outline' },
+    { label: '使用済みにする', fn: () => modal('本当に使用済みにしますか？', 'この操作は取り消せません。', [
+      { label: 'やめる', cls: 'btn-outline' },
+      { label: '使用済みにする', fn: () => { S.tickets = S.tickets.filter(x => x.id !== id); save(); render(); } }
+    ]) }
+  ]);
+}
+
+/* ==================== GPS歩行ポイント ==================== */
+let watchId = null, lastPos = null;
+function dist(a, b) { // 2地点間の距離(m)：ハバーサイン公式
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function setGpsUi(on, text) {
+  $('#gpsChip').classList.toggle('on', on);
+  $('#gpsChipText').textContent = on ? '計測中' : '計測OFF';
+  $('#quickGpsText').textContent = on ? '歩行停止' : '歩行開始';
+  $('#gpsText').textContent = text;
+}
+// 背景位置情報（アプリ版）：Monacaでアプリ化して「cordova-background-geolocation-lt」プラグインを入れたときだけ使います。
+// プラグインがない（ブラウザで開いた）ときは、今まで通り「画面を開いている間だけ」計測します。
+const nativeBG = () => !!(window.BackgroundGeolocation && typeof BackgroundGeolocation.onLocation === 'function');
+let tracking = false, nativeSub = false;
+const toPos = loc => { const c = loc.coords || loc; return { coords: { latitude: c.latitude, longitude: c.longitude, accuracy: c.accuracy == null ? 0 : c.accuracy } }; };
+function startNative() {
+  if (!nativeSub) { BackgroundGeolocation.onLocation(loc => { if (tracking) onPos(toPos(loc)); }, () => {}); nativeSub = true; }   // 受け取りは1回だけ登録する
+  return BackgroundGeolocation.ready({
+    geolocation: { desiredAccuracy: BackgroundGeolocation.DesiredAccuracy.High, distanceFilter: 10 },   // 10m動くごとに位置を受け取る
+    app: { stopOnTerminate: true, startOnBoot: false }                                                  // アプリを終了したら止める・端末の起動時には始めない
+  }).then(() => BackgroundGeolocation.start());
+}
+function startGps() {
+  if (nativeBG()) { tracking = true; setGpsUi(true, '現在地を確認しています…'); startNative().catch(onPosErr); return; }
+  if (!navigator.geolocation) return modal('位置情報を使えません', 'この端末・ブラウザは位置情報に対応していません。');
+  tracking = true;
+  watchId = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  setGpsUi(true, '現在地を確認しています…');
+}
+function stopGps() {
+  tracking = false;
+  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+  watchId = null; lastPos = null;
+  if (nativeBG()) { try { BackgroundGeolocation.stop(); } catch (e) {} }
+  setGpsUi(false, '計測OFF：右上のボタンで歩行ポイントを開始');
+}
+function toggleGps() { tracking ? stopGps() : startGps(); }
+function onPos(p) {
+  if (S.day !== today()) { Object.assign(S, { day: today(), dist: 0, walkPt: 0, rem: 0, scanned: {} }); render(); } // 日またぎ対応
+  const here = { lat: p.coords.latitude, lng: p.coords.longitude };
+  updateMe(here);
+  if (!inTarumi(here)) { lastPos = null; return setGpsUi(true, '垂水区の外です（垂水区内を歩くとポイントが貯まります）'); }
+  setGpsUi(true, S.walkPt >= WALK_CAP ? '今日の歩行ポイントは上限に達しました' : '垂水区内：歩くとポイントが貯まります');
+
+  if (lastPos && p.coords.accuracy <= 50) {
+    const d = dist(lastPos, here);
+    if (d >= 3 && d <= 100) { // 3m未満はブレ、100m超は飛びとして無視
+      S.dist += d; S.distTotal = (S.distTotal || 0) + d; S.hist[today()] = (S.hist[today()] || 0) + d; markActive();
+      let got = 0;
+      if (S.walkPt < WALK_CAP) {
+        S.rem += d;
+        while (S.rem >= M_PER_PT && S.walkPt < WALK_CAP) { S.rem -= M_PER_PT; S.walkPt++; got++; }
+      }
+      if (got) { const m = mult(); addPt(got * m, '歩行ポイント' + (m > 1 ? `（${m}倍）` : '')); DB.inc('stats/day/' + today() + '/walkPt', got); const bg = checkBadges(); if (bg.length) modal('バッジ獲得！', badgeHtml(bg)); } else { save(); render(); }
+    }
+  }
+  lastPos = here;
+}
+function onPosErr() {
+  stopGps();
+  modal('位置情報を取得できません', 'ブラウザや端末の設定で位置情報を許可してください。');
+}
+$('#gpsChip').addEventListener('click', toggleGps);
+$('#quickGps').addEventListener('click', toggleGps);
+
+/* ==================== 追加機能 ==================== */
+const SCAN_RADIUS_M = 300;   // QRを読み取れる、お店からの距離（m）
+const NEAR_CHECK = true;     // false にすると距離チェックをしません
+
+// --- 営業中の判定 ---
+const OPEN_LABEL = { open: '営業中', closed: '営業時間外', off: '本日定休日' };
+function openState(x) {
+  if (!x.open || !x.close) return null;
+  const d = new Date();
+  if (x.closed !== undefined && x.closed !== '' && +x.closed === d.getDay()) return 'off';
+  const f = t => { const [h, m] = t.split(':'); return +h * 60 + +m; }, now = d.getHours() * 60 + d.getMinutes();
+  return now >= f(x.open) && now < f(x.close) ? 'open' : 'closed';
+}
+// --- ポイント倍率キャンペーン ---
+function mult() {
+  const t = today();
+  return SETTINGS.mult > 1 && (!SETTINGS.from || t >= SETTINGS.from) && (!SETTINGS.to || t <= SETTINGS.to) ? SETTINGS.mult : 1;
+}
+// --- QRを読み取るとき、お店の近くにいるか ---
+function isNear(shop) {
+  return new Promise(res => {
+    if (!navigator.geolocation) return res('denied');
+    navigator.geolocation.getCurrentPosition(p => res(dist({ lat: p.coords.latitude, lng: p.coords.longitude }, shop) <= SCAN_RADIUS_M ? true : 'far'), () => res('denied'), { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 });
+  });
+}
+const rallyNeed = () => Math.max(1, +SETTINGS.rallyNeed || 10);   // スタンプが何個たまったら達成か
+// --- バッジ（SVG線画アイコン。獲得済み＝青、未獲得＝グレー） ---
+const streakMax = u => { // 「QRか歩行をした日」が最長で何日続いたか
+  let best = 0, run = 0, prev = null;
+  Object.keys(u.days || {}).sort().forEach(k => { const t = Date.parse(k + 'T00:00:00Z') / 864e5; run = prev !== null && t - prev === 1 ? run + 1 : 1; best = Math.max(best, run); prev = t; });
+  return best;
+};
+const BADGES = [
+  { id: 'first', name: 'はじめてのQR', desc: 'QRを1回読み取る', goal: 1, cur: u => u.scanTotal || 0,
+    svg: '<rect x="6" y="6" width="14" height="14" rx="2"/><rect x="28" y="6" width="14" height="14" rx="2"/><rect x="6" y="28" width="14" height="14" rx="2"/><path d="M11 11h4v4h-4zM33 11h4v4h-4zM11 33h4v4h-4z"/><path d="M28 28h5M38 28h4M28 35h6M38 35v7M28 42h5"/>' },
+  { id: 'scan10', name: 'QRじょうず', desc: 'QRを合計10回読み取る', goal: 10, cur: u => u.scanTotal || 0,
+    svg: '<path d="M6 14h36v8a4 4 0 0 0 0 8v8H6v-8a4 4 0 0 0 0-8z"/><path d="M30 14v24" stroke-dasharray="3 3"/>' },
+  { id: 'scan30', name: 'QRマスター', desc: 'QRを合計30回読み取る', goal: 30, cur: u => u.scanTotal || 0,
+    svg: '<path d="M8 16V8h8M32 8h8v8M40 32v8h-8M16 40H8v-8"/><path d="M24 15l2.5 6.5L33 24l-6.5 2.5L24 33l-2.5-6.5L15 24l6.5-2.5z"/>' },
+  { id: 'three', name: '3店舗めぐり', desc: '3つのお店でQRを読み取る', goal: 3, cur: u => Object.keys(u.visited || {}).length,
+    svg: '<path d="M6 20 10 8h28l4 12"/><path d="M6 20q6 7 12 0 6 7 12 0 6 7 12 0"/><path d="M10 26v14h28V26"/><path d="M20 40V30h8v10"/>' },
+  { id: 'all', name: '全店制覇', desc: 'すべてのお店でQRを読み取る', goal: () => STORES.length, cur: u => STORES.filter(x => (u.visited || {})[x.id]).length,
+    svg: '<path d="M8 36 6 14l11 10 7-14 7 14 11-10-2 22z"/><path d="M8 42h32"/>' },
+  { id: 'cats3', name: 'いろいろめぐり', desc: '3つのジャンルのお店でQRを読み取る', goal: 3, cur: u => new Set(STORES.filter(x => (u.visited || {})[x.id]).map(x => x.cat)).size,
+    svg: '<circle cx="14" cy="14" r="8"/><rect x="26" y="6" width="16" height="16" rx="2"/><path d="M24 26l10 16H14z"/>' },
+  { id: 'walk5', name: '5kmウォーカー', desc: '合計5km歩く', goal: 5000, km: true, cur: u => u.distTotal || 0,
+    svg: '<path d="M5 34V22c4 0 8-2 10-5l4 5c2 2 5 3 9 4l9 2c4 1 6 3 6 6v3H5z"/><path d="M20 24l3-3M25 26l3-3"/>' },
+  { id: 'walk20', name: '20kmウォーカー', desc: '合計20km歩く', goal: 20000, km: true, cur: u => u.distTotal || 0,
+    svg: '<circle cx="30" cy="9" r="4"/><path d="M27 16l-5 12"/><path d="M22 28l7 6-3 9"/><path d="M22 28l-7 5-6-2"/><path d="M27 16l8 5 5-2"/><path d="M27 16l-8 2-4 6"/>' },
+  { id: 'walk50', name: '50kmウォーカー', desc: '合計50km歩く', goal: 50000, km: true, cur: u => u.distTotal || 0,
+    svg: '<path d="M4 40l14-24 8 12 6-8 12 20z"/><path d="M18 16V8l7 3-7 3"/>' },
+  { id: 'day3k', name: 'たくさん歩いた日', desc: '1日に3km歩く', goal: 3000, km: true, cur: u => Math.max(0, ...Object.values(u.hist || {})),
+    svg: '<path d="M10 34a14 14 0 0 1 28 0"/><path d="M4 34h40M24 10v6M10 16l4 4M38 16l-4 4"/><path d="M12 40h24"/>' },
+  { id: 'streak3', name: '3日連続', desc: '3日連続でQRか歩行をする', goal: 3, cur: streakMax,
+    svg: '<rect x="6" y="10" width="36" height="32" rx="4"/><path d="M6 20h36M16 6v8M32 6v8"/><path d="M17 31l5 5 9-9"/>' },
+  { id: 'streak7', name: '7日連続', desc: '7日連続でQRか歩行をする', goal: 7, cur: streakMax,
+    svg: '<path d="M24 5c1 9 12 12 12 25a12 12 0 0 1-24 0c0-6 3-10 7-13 0 4 2 6 4 6 0-6-2-10 1-18z"/><path d="M18 38c0-4 3-6 6-9 3 3 6 5 6 9"/>' },
+  { id: 'rally', name: 'ラリー達成', desc: 'スタンプラリーを達成する', goal: 1, cur: u => u.rallyDone || 0,
+    svg: '<circle cx="24" cy="29" r="11"/><path d="M16 8l5 12M32 8l-5 12"/><path d="M24 23l2 4.5 5 .5-3.7 3.3 1.2 4.9L24 33.2l-4.5 2.5 1.2-4.9L17 28l5-.5z"/>' },
+  { id: 'rally3', name: 'ラリーの達人', desc: 'スタンプラリーを3回達成する', goal: 3, cur: u => u.rallyDone || 0,
+    svg: '<path d="M16 8h16v10a8 8 0 0 1-16 0z"/><path d="M16 12H8c0 6 3 9 8 9M32 12h8c0 6-3 9-8 9"/><path d="M24 26v8M19 34h10v6H19zM15 42h18"/>' },
+  { id: 'earn500', name: '500ptゲット', desc: 'ポイントを合計500pt獲得する', goal: 500, unit: 'pt', cur: u => u.earned || 0,
+    svg: '<circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="11"/><path d="M21 31V17h5a4 4 0 0 1 0 8h-5"/>' },
+  { id: 'earn2000', name: '2000ptゲット', desc: 'ポイントを合計2000pt獲得する', goal: 2000, unit: 'pt', cur: u => u.earned || 0,
+    svg: '<ellipse cx="24" cy="12" rx="14" ry="5"/><path d="M10 12v8c0 3 6 5 14 5s14-2 14-5v-8M10 20v8c0 3 6 5 14 5s14-2 14-5v-8M10 28v8c0 3 6 5 14 5s14-2 14-5v-8"/>' },
+  { id: 'exch1', name: 'はじめての交換', desc: '特典を1回交換する', goal: 1, cur: u => u.exchCount || 0,
+    svg: '<rect x="6" y="18" width="36" height="8" rx="1"/><path d="M10 26v16h28V26M24 18v24"/><path d="M24 18c-4-8-14-8-12-2 1 3 8 2 12 2zM24 18c4-8 14-8 12-2-1 3-8 2-12 2z"/>' },
+  { id: 'fav3', name: 'お気に入り3店', desc: 'お気に入りのお店を3つ登録する', goal: 3, cur: u => STORES.filter(x => (u.favs || {})[x.id]).length,
+    svg: '<path d="M24 41S6 30 6 17a9 9 0 0 1 18-3 9 9 0 0 1 18 3c0 13-18 24-18 24z"/>' }
+];
+const goalOf = b => typeof b.goal === 'function' ? b.goal() : b.goal;
+const done = (b, u) => goalOf(b) > 0 && b.cur(u) >= goalOf(b);
+const badgeIcon = (b, size, on) => `<svg class="bsvg ${on ? 'on' : ''}" width="${size}" height="${size}" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b.svg}</svg>`;
+function checkBadges() { // 新しく取れたバッジを返す
+  const got = [];
+  BADGES.forEach(b => { if (!S.badges[b.id] && done(b, S)) { S.badges[b.id] = today(); got.push(b); } });
+  if (got.length) { save(); render(); }
+  return got;
+}
+const badgeHtml = got => got.map(b => `<p class="big" style="font-size:1.1rem;display:flex;align-items:center;justify-content:center;gap:8px">${badgeIcon(b, 36, true)}<span>バッジ獲得！</span><b>${esc(b.name)}</b></p>`).join('');
+// --- お知らせの未読 ---
+const newsKey = n => n.date + '|' + n.title;
+// --- 特典：期限と在庫 ---
+function rewardCard(r) {
+  const left = STOCK[r.id], expired = r.until && today() > r.until, out = left !== undefined && left <= 0, lack = S.points < r.cost;
+  const label = expired ? '受付終了' : out ? '在庫なし' : lack ? `あと ${r.cost - S.points} pt` : '交換する';
+  return `<div class="card"><div class="card-head"><span class="card-title">${esc(r.name)}</span><span class="tag tag-primary">${r.cost} pt</span></div><p class="card-body">${esc(r.desc)}</p><p class="card-date">${r.until ? `<span class="tag tag-gray">〜${esc(r.until)}まで</span> ` : ''}${left !== undefined ? `<span class="tag tag-gray">残り${Math.max(0, left)}枚</span>` : ''}</p><button class="btn btn-primary btn-sm" style="margin-top:12px" data-ex="${esc(r.id)}" ${expired || out || lack ? 'disabled' : ''}>${label}</button></div>`;
+}
+async function takeStock(r) { // 期限と在庫を確認し、在庫を1つ減らす（サーバー側で1つずつ減るので同時に押されても足りなくなりません）
+  if (r.until && today() > r.until) { modal('受付終了', 'この特典の交換期間は終わりました。'); return false; }
+  if (STOCK[r.id] === undefined) return true;   // 枚数を決めていない特典は無制限
+  try {
+    const res = await fetch(await DB.url('stock/' + r.id), { method: 'PUT', body: JSON.stringify({ '.sv': { increment: -1 } }) });
+    if (res.ok) { STOCK[r.id]--; return true; }
+  } catch (e) {}
+  modal('在庫がありません', '交換できませんでした（在庫切れまたは通信エラー）。'); loadContent().then(render);
+  return false;
+}
+// --- ホーム画面の追加表示（render を拡張） ---
+function renderExtras() {
+  if (!S.uid || S.role === 'admin') return;
+  const m = mult(), need = rallyNeed(), n = Math.min(S.stamps.length, need);
+  $('#campaign').innerHTML = m > 1 ? `<div class="camp">🎉 ポイント${m}倍キャンペーン実施中${SETTINGS.to ? '（〜' + esc(SETTINGS.to) + '）' : ''}${SETTINGS.label ? '<br>' + esc(SETTINGS.label) : ''}</div>` : '';
+  $('#stampCard').innerHTML = `<div class="stamps">${[...Array(need)].map((_, i) => `<div class="stamp ${i < n ? 'on' : ''}"><i class="fa-solid ${i < n ? 'fa-check' : 'fa-store'}"></i></div>`).join('')}</div><p class="card-body">あと${Math.max(0, need - n)}個でボーナス+${SETTINGS.rallyBonus}pt</p><p class="card-date">QRを読み取るとスタンプが1つたまります（同じお店は1日1回）</p><p class="card-date">達成回数 ${S.rallyDone || 0}</p>`;
+  const got = BADGES.filter(b => S.badges[b.id]).length;
+  $('#badgeSummary').innerHTML = `<p class="card-body"><b style="color:var(--primary-color);font-size:1.2rem">${got}</b> / ${BADGES.length}　<span>バッジ獲得数</span></p><div class="badge-mini">${BADGES.map(b => badgeIcon(b, 30, !!S.badges[b.id])).join('')}</div>`;
+  $('#badgeBox').innerHTML = BADGES.map(b => {
+    const on = S.badges[b.id], g = goalOf(b), c = Math.min(b.cur(S), g), fm = v => b.km ? +(v / 1000).toFixed(1) : v;
+    return `<div class="bcard ${on ? 'on' : ''}"><div class="bico">${badgeIcon(b, 46, !!on)}</div><p class="card-title" style="font-size:.9rem">${esc(b.name)}</p><p class="card-date" style="margin:2px 0 8px">${esc(b.desc)}</p>${on ? `<span class="tag tag-accent">獲得日 ${esc(on)}</span>` : `<span class="tag tag-gray">${fm(c)} / ${fm(g)}${b.km ? ' km' : b.unit ? ' ' + b.unit : ''}</span>`}</div>`;
+  }).join('');
+  renderHist();
+  $('#newsDot').hidden = !NEWS.some(x => !S.seenNews.includes(newsKey(x)));
+  $('#rewardList').innerHTML = REWARDS.map(rewardCard).join('');
+}
+const baseRender = render;
+render = function () { baseRender(); renderExtras(); };
+// --- お店の詳細 ---
+function storeDetail(id) {
+  const x = STORES.find(v => v.id === id); if (!x) return;
+  const st = openState(x), has = x.closed !== undefined && x.closed !== '';
+  const img = /^https?:\/\//.test(x.img || '') ? `<img src="${esc(x.img)}" alt="" style="width:100%;border-radius:12px;margin-bottom:10px;max-height:180px;object-fit:cover">` : '';
+  modal(x.name, img + [`${esc(x.cat)}・${esc(x.desc)}`, x.open ? `営業時間 ${esc(x.open)}〜${esc(x.close)}${has ? `（${'日月火水木金土'[x.closed]}曜定休）` : ''}${st ? '\n' + OPEN_LABEL[st] : ''}` : '', x.tel ? `電話 <a href="tel:${esc(x.tel)}">${esc(x.tel)}</a>` : '', `QRで ${x.pt}pt 獲得`].filter(Boolean).join('\n'), [
+    { label: '閉じる', cls: 'btn-outline' },
+    { label: S.favs[id] ? '★ 登録済み' : '☆ お気に入り', cls: 'btn-outline', fn: () => { const bg = toggleFav(id); if (bg.length) modal('バッジ獲得！', badgeHtml(bg)); else storeDetail(id); } },
+    { label: 'ナビ', fn: () => window.open(`https://www.google.com/maps/dir/?api=1&destination=${x.lat},${x.lng}`, '_blank') }
+  ]);
+}
+document.addEventListener('click', e => {
+  const c = e.target.closest('[data-chip]');
+  if (c) { // 地図・一覧の絞り込み
+    if (c.dataset.chip === 'all') { mapFilter.cat = ''; mapFilter.openOnly = false; mapFilter.fav = false; }
+    else if (c.dataset.chip === 'open') mapFilter.openOnly = !mapFilter.openOnly;
+    else if (c.dataset.chip === 'fav') mapFilter.fav = !mapFilter.fav;
+    else mapFilter.cat = mapFilter.cat === c.dataset.v ? '' : c.dataset.v;
+    return drawMarkers();
+  }
+  const v = e.target.closest('[data-view]');
+  if (v) return setMapView(v.dataset.view);
+  const h = e.target.closest('[data-hist]');
+  if (h) { histDays = +h.dataset.hist; document.querySelectorAll('[data-hist]').forEach(b => b.classList.toggle('on', b === h)); return renderHist(); }
+  const f = e.target.closest('[data-fav]');
+  if (f) { const bg = toggleFav(f.dataset.fav); if (bg.length) modal('バッジ獲得！', badgeHtml(bg)); return; }
+  const st = e.target.closest('[data-store]');
+  if (st) storeDetail(st.dataset.store);
+});
+// --- 管理者：キャンペーン設定・集計 ---
+function fillSettings() {
+  $('#cL').value = SETTINGS.label || ''; $('#cM').value = SETTINGS.mult || 1; $('#cF').value = SETTINGS.from || ''; $('#cT').value = SETTINGS.to || '';
+  $('#cN').value = SETTINGS.rallyNeed; $('#cB').value = SETTINGS.rallyBonus;
+}
+$('#campSave').addEventListener('click', async () => {
+  Object.assign(SETTINGS, { label: $('#cL').value.trim(), mult: Math.max(1, parseInt($('#cM').value, 10) || 1), from: $('#cF').value, to: $('#cT').value, rallyNeed: Math.max(1, parseInt($('#cN').value, 10) || 10), rallyBonus: Math.max(0, parseInt($('#cB').value, 10) || 0) });
+  try { await DB.set('content/settings', JSON.stringify(SETTINGS)); modal('保存しました', '利用者のアプリに最大20秒で反映されます。'); }
+  catch (e) { modal('通信エラー', '保存できませんでした。'); }
+});
+async function renderStats() {
+  const box = $('#statsBox'); box.innerHTML = '<p class="empty">読み込み中…</p>';
+  try {
+    const st = (await DB.get('stats')) || {};
+    const bars = rows => { const mx = Math.max(1, ...rows.map(r => r[1])); return rows.map(r => `<div class="bar"><span>${esc(r[0])}</span><i style="width:${Math.round(r[1] / mx * 100)}%"></i><b>${r[1]}</b></div>`).join(''); };
+    const days = [...Array(7)].map((_, k) => { const d = new Date(Date.now() - (6 - k) * 864e5).toLocaleDateString('sv-SE'), o = (st.day || {})[d] || {}; return [d.slice(5), o.scan || 0, o.walkPt || 0]; });
+    box.innerHTML = `<div class="card"><p class="card-title" style="margin-bottom:6px">お店ごとのQR読み取り回数（累計）</p>${bars(STORES.map(x => [x.name, (st.store || {})[x.id] || 0])) || ''}</div>
+      <div class="card"><p class="card-title" style="margin-bottom:6px">直近7日のQR読み取り回数</p>${bars(days.map(d => [d[0], d[1]]))}</div>
+      <div class="card"><p class="card-title" style="margin-bottom:6px">直近7日の歩行ポイント（合計）</p>${bars(days.map(d => [d[0], d[2]]))}</div>`;
+  } catch (e) { box.innerHTML = '<p class="empty">読み込めませんでした</p>'; }
+}
+
+// --- 管理者：地図でお店を追加・確認 ---
+let adminMap = null, adminLayer = null;
+function initAdminMap() {
+  if (!$('#adminMap')) return;
+  if (!adminMap) {
+    adminMap = L.map('adminMap').setView([STATION.lat, STATION.lng], 15);
+    L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=ja&x={x}&y={y}&z={z}', { maxZoom: 20, attribution: '&copy; Google' }).addTo(adminMap);
+    adminMap.on('click', e => { // 地図をタップ→「ここにお店を追加」
+      pendingPos = { lat: e.latlng.lat, lng: e.latlng.lng };
+      L.popup().setLatLng(e.latlng).setContent('<button class="btn btn-primary btn-sm" data-c="st-add"><i class="fa-solid fa-plus"></i> ここにお店を追加</button>').openOn(adminMap);
+    });
+  }
+  setTimeout(() => { adminMap.invalidateSize(); drawAdminMarkers(); }, 50);
+}
+function drawAdminMarkers() {
+  if (!adminMap) return;
+  if (adminLayer) adminLayer.clearLayers(); else adminLayer = L.layerGroup().addTo(adminMap);
+  STORES.forEach((x, i) => L.marker([x.lat, x.lng]).addTo(adminLayer).bindPopup(`<b>${esc(x.name)}</b><br>${esc(x.cat)}・${x.pt}pt<br><button class="btn btn-primary btn-sm" style="margin-top:6px" data-c="st-edit" data-i="${i}">編集</button>`));
+}
+const baseRAC = renderAdminContent;
+renderAdminContent = function () { baseRAC(); drawAdminMarkers(); };   // お店が変わったら管理者の地図も更新
+
+// --- 誕生日のプルダウン（選ぶと、ログインに使う YYYY-MM-DD が #aBd に入る） ---
+(function () {
+  const Y = $('#aY'), M = $('#aM'), D = $('#aD'), H = $('#aBd');
+  const fill = (el, label, from, to, step) => { el.innerHTML = `<option value="">${label}</option>`; for (let v = from; step > 0 ? v <= to : v >= to; v += step) el.insertAdjacentHTML('beforeend', `<option value="${v}">${v}</option>`); };
+  fill(Y, '年', new Date().getFullYear(), 1920, -1); fill(M, '月', 1, 12, 1); fill(D, '日', 1, 31, 1);
+  const sync = () => {
+    const days = new Date(+Y.value || 2000, +M.value || 1, 0).getDate();   // その月の日数（うるう年も考慮）
+    if (D.options.length - 1 !== days) { const keep = +D.value; fill(D, '日', 1, days, 1); if (keep && keep <= days) D.value = keep; }
+    H.value = Y.value && M.value && D.value ? `${Y.value}-${String(M.value).padStart(2, '0')}-${String(D.value).padStart(2, '0')}` : '';
+  };
+  [Y, M, D].forEach(el => el.addEventListener('change', sync));
+})();
+
+/* ==================== お店の一覧・お気に入り ==================== */
+let mapView = 'map', userPos = null;
+const passFilter = x => (!mapFilter.cat || x.cat === mapFilter.cat) && (!mapFilter.openOnly || openState(x) === 'open') && (!mapFilter.fav || (S.favs || {})[x.id]);
+const distText = m => m < 1000 ? Math.max(10, Math.round(m / 10) * 10) + 'm' : (m / 1000).toFixed(1) + 'km';
+function setMapView(v) { // 地図 ⇔ 一覧
+  mapView = v;
+  document.querySelectorAll('#mapSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  $('#map').hidden = v !== 'map'; $('#storeList').hidden = v !== 'list';
+  if (v === 'map' && map) setTimeout(() => map.invalidateSize(), 50);
+  renderChips(); renderStoreList();
+}
+function renderStoreList() {
+  const box = $('#storeList');
+  if (!box || mapView !== 'list') return;
+  const base = userPos || STATION, rows = STORES.filter(passFilter).map(x => ({ x, d: dist(base, x) })).sort((a, b) => a.d - b.d);
+  const note = `<p class="gps-text" style="margin:0 2px 10px">${userPos ? '現在地から近い順' : '現在地を取得できないため、垂水駅からの距離で並べています'}</p>`;
+  box.innerHTML = note + (rows.length ? rows.map(({ x, d }) => {
+    const st = openState(x), fav = !!(S.favs || {})[x.id], v = S.visited && S.visited[x.id];
+    return `<div class="card srow"><button class="srow-main" data-store="${esc(x.id)}"><span class="card-title">${esc(x.name)}</span><span class="srow-meta"><span class="tag tag-gray">${esc(x.cat)}</span>${st ? `<span class="op ${st === 'open' ? '' : 'x'}" style="margin:0">${OPEN_LABEL[st]}</span>` : ''}<span class="tag tag-accent">${x.pt}pt</span>${v ? '<span class="tag tag-primary">訪問済み</span>' : ''}</span><span class="card-date" style="margin:0">${distText(d)}・${esc(x.desc)}</span></button><button class="fav ${fav ? 'on' : ''}" data-fav="${esc(x.id)}" aria-pressed="${fav}" aria-label="お気に入り"><i class="fa-${fav ? 'solid' : 'regular'} fa-star"></i></button></div>`;
+  }).join('') : '<div class="card empty">該当するお店がありません</div>');
+}
+function toggleFav(id) { // お気に入りの登録・解除。新しく取れたバッジを返す
+  if (S.favs[id]) delete S.favs[id]; else S.favs[id] = 1;
+  save(); drawMarkers(); renderExtras();
+  return checkBadges();
+}
+
+/* ==================== 特典ページの切り替え・活動した日の記録 ==================== */
+function setRwTab(t) { // 特典ページ：交換 ⇔ スタンプ・バッジ
+  $('#rw-ex').hidden = t !== 'ex'; $('#rw-collect').hidden = t !== 'collect';
+  document.querySelectorAll('#rwSeg button').forEach(b => b.classList.toggle('on', b.dataset.rw === t));
+}
+function markActive() { S.days[today()] = 1; }   // QRか歩行をした日（連続日数のバッジに使う）
+
+/* ==================== 歩いた距離の履歴 ==================== */
+let histDays = 7;
+function renderHist() {
+  const box = $('#histCard'); if (!box) return;
+  const n = histDays, rows = [];
+  for (let k = n - 1; k >= 0; k--) {
+    const d = new Date(); d.setDate(d.getDate() - k);
+    const key = d.toLocaleDateString('sv-SE');
+    rows.push({ key, md: (d.getMonth() + 1) + '/' + d.getDate(), dd: d.getDate(), m: (S.hist || {})[key] || 0, today: k === 0, back: k });
+  }
+  const mx = Math.max(1000, ...rows.map(r => r.m)), sum = rows.reduce((a, r) => a + r.m, 0), km = v => (v / 1000).toFixed(1), th = n > 7 ? ' thirty' : '';
+  box.innerHTML = `<div class="hist${th}" role="img" aria-label="${n}">${rows.map(r => `<div class="hbar ${r.today ? 'today' : ''}" title="${r.key} ${km(r.m)}km">${n === 7 && r.m ? `<b>${km(r.m)}</b>` : ''}<i style="height:${Math.max(3, Math.round(r.m / mx * 84))}px"></i></div>`).join('')}</div>`
+    + `<div class="hlab${th}">${rows.map(r => `<span class="${r.today ? 'today' : ''}">${n === 7 ? r.md : (r.back % 5 === 0 ? r.dd : '')}</span>`).join('')}</div>`
+    + `<p class="card-body"><span>${n}日合計</span> <b>${km(sum)} km</b>　<span>1日平均</span> <b>${km(sum / n)} km</b></p><p class="card-date"><span>これまでの合計</span> <b>${km(S.distTotal || 0)} km</b></p>`;
+}
+
+/* ==================== 初めて使う人への案内 ==================== */
+const TOUR = () => [
+  { ico: 'fa-store', t: 'ようこそ！', b: ['たるみぽんぽんPayは、垂水の商店街でポイントをためて、お得な特典と交換できるアプリです。', '使い方を、かんたんにご案内します。'] },
+  { ico: 'fa-qrcode', t: 'QRでポイントをためる', b: ['お店にあるQRコードを、下のメニューの「QR」で読み取ります。', 'お店の近くで読み取ってください。同じお店は1日1回です。', 'カメラと位置情報を使います。'] },
+  { ico: 'fa-person-walking', t: '歩いてポイントをためる', b: ['ホームの「歩行開始」をオンにして、垂水区内を歩きます。', `${M_PER_PT}m歩くごとに1pt（1日${WALK_CAP}ptまで）`, nativeBG() ? 'アプリ版では、画面を閉じていても計測できます。' : 'アプリを開いている間だけ計測できます。画面を消したり、別のアプリを開いたりすると止まることがあります。', '位置情報を使います。'] },
+  { ico: 'fa-medal', t: 'スタンプとバッジ', b: ['QRを読み取るとスタンプが1つたまり、たまるとボーナスポイントがもらえます。', 'スタンプとバッジは、下のメニューの「特典」で見られます。'] },
+  { ico: 'fa-gift', t: '特典と交換する', b: ['ためたポイントは、「特典」で割引券などと交換できます。', 'お店で画面を見せて使ってください。', '位置情報を許可しておくと、歩行ポイントやお店までの距離が使えます。'] }
+];
+let tourI = 0, tourManual = false;
+function renderTour() {
+  const steps = TOUR(), st = steps[tourI], last = tourI === steps.length - 1;
+  $('#tourIco').innerHTML = `<i class="fa-solid ${st.ico}"></i>`;
+  $('#tourTitle').textContent = st.t;
+  $('#tourBody').innerHTML = st.b.map(x => `<p>${esc(x)}</p>`).join('');
+  $('#tourDots').innerHTML = steps.map((_, i) => `<i class="${i === tourI ? 'on' : ''}"></i>`).join('');
+  $('#tourSkip').textContent = last ? 'いま位置情報を許可する' : 'スキップ';
+  $('#tourNext').textContent = last ? 'はじめる' : '次へ';
+}
+function openTour(manual) { tourI = 0; tourManual = !!manual; renderTour(); $('#tour').classList.add('active'); }
+function closeTour() { $('#tour').classList.remove('active'); if (!tourManual && S.uid) { S.tourDone = true; save(); } }   // 初回だけ表示（見たことを保存）
+$('#tourSkip').addEventListener('click', () => {
+  if (tourI < TOUR().length - 1) return closeTour();
+  if (navigator.geolocation) navigator.geolocation.getCurrentPosition(() => {}, () => {}, { timeout: 10000 });   // 最後の画面：先に位置情報の許可を求める
+});
+$('#tourNext').addEventListener('click', () => { if (tourI < TOUR().length - 1) { tourI++; renderTour(); } else closeTour(); });
+$('#tourBtn').addEventListener('click', () => openTour(true));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#tour').classList.contains('active')) closeTour(); });
+
+/* ==================== 多言語（日本語／English） ==================== */
+// 画面に出た日本語を、辞書で英語に置き換えます。辞書にない文字（お店名・お知らせの本文など）は入力した言語のまま表示されます。
+const EN = {
+  'ホーム':'Home','マップ':'Map','お知らせ':'News','特典':'Rewards','計測OFF':'Tracking off','計測中':'Tracking',
+  'ログイン':'Log in','新規アカウント作成':'Create account','名前':'Name','誕生日':'Birthday','パスワード（4文字以上）':'Password (4+ characters)','アカウントを作る':'Create account','はじめての方は新規登録':'New here? Sign up','ログイン画面にもどる':'Back to log in',
+  '誕生日かパスワードが違います。':'Birthday or password is incorrect.','この誕生日とパスワードの組み合わせは使えません。別のパスワードにしてください。':'This birthday and password combination is not available. Please choose another password.','通信エラーです。もう一度お試しください。':'Network error. Please try again.','このアカウントは削除されています。':'This account has been deleted.','しばらくしてからもう一度お試しください。':'Please try again later.',
+  'さんのポイント':'– Points','本日歩いた距離':'Distance walked today','本日の歩行pt':'Walking pt today','計測OFF：右上のボタンで歩行ポイントを開始':'Tracking off: tap the button at the top right to earn walking points',
+  'QRスキャン':'Scan QR','店舗マップ':'Store map','特典交換':'Rewards','歩行開始':'Start walking','歩行停止':'Stop walking','スタンプラリー':'Stamp rally','おすすめのお店':'Featured stores','お知らせ ›':'News ›','バッジ':'Badges','ポイント履歴':'Point history','まだ履歴がありません':'No history yet','言語 / Language':'Language',
+  '現在地を確認しています…':'Checking your location…','垂水区の外です（垂水区内を歩くとポイントが貯まります）':'You are outside Tarumi Ward (walk inside the ward to earn points)','垂水区内：歩くとポイントが貯まります':'In Tarumi Ward: walk to earn points','今日の歩行ポイントは上限に達しました':"Today's walking point limit has been reached",
+  '位置情報を取得できません':'Cannot get your location','ブラウザや端末の設定で位置情報を許可してください。':'Please allow location access in your browser or device settings.',
+  '垂水商店街マップ':'Tarumi Shopping Street Map','ピンをタップ':'Tap a pin','すべて':'All','営業中のみ':'Open now only','営業中':'Open','営業時間外':'Closed now','本日定休日':'Closed today','詳細':'Details','ピン：黄＝未訪問／青＝訪問済み':'Pins: yellow = not visited / blue = visited','ナビ':'Directions','閉じる':'Close',
+  '店頭QRスキャン':'Scan Store QR','店舗のQRコードを枠に合わせてください':'Align the store QR code within the frame','カメラを起動する':'Start camera','QRコードを探しています…':'Looking for a QR code…','デモ用（カメラなしで試す）':'Demo (try without a camera)','対象外のQRです':'Unsupported QR','このアプリ用のQRコードではありません。':'This is not a QR code for this app.','獲得済みです':'Already collected','スキャン成功！':'Scan successful!','カメラを使えません':'Camera unavailable',
+  'お店から離れています':'Too far from the store','お店の近くでQRを読み取ってください。':'Please scan the QR code near the store.','位置情報が必要です':'Location required','ポイント不正防止のため、読み取り時に位置情報を使います。位置情報を許可してください。':'To prevent cheating, your location is checked when scanning. Please allow location access.',
+  '商店街ニュース':'Shopping Street News','所持':'You have','持っているチケット':'My tickets','チケットはありません':'No tickets','交換する':'Exchange','店頭で提示する':'Show at store','未使用':'Unused','交換しますか？':'Exchange?','キャンセル':'Cancel','交換完了！':'Exchanged!','使用済みにする':'Mark as used','本当に使用済みにしますか？':'Mark as used?','この操作は取り消せません。':'This cannot be undone.','やめる':'Cancel','チケット':'Ticket','受付終了':'Closed','在庫なし':'Sold out','在庫がありません':'Out of stock','この特典の交換期間は終わりました。':'The exchange period for this reward has ended.','交換できませんでした（在庫切れまたは通信エラー）。':'Could not exchange (out of stock or network error).',
+  'チケットは下の「持っているチケット」から使えます。':'Use your ticket from "My tickets" below.','通信エラー':'Network error','バッジ獲得！':'Badge earned!',
+  'はじめてのQR':'First QR','3店舗めぐり':'3 stores visited','全店制覇':'All stores','5kmウォーカー':'5 km walker','20kmウォーカー':'20 km walker','ラリー達成':'Rally complete',
+  'QRを1回読み取る':'Scan a QR once','3つのお店でQRを読み取る':'Scan QR at 3 stores','すべてのお店でQRを読み取る':'Scan QR at every store','合計5km歩く':'Walk 5 km in total','合計20km歩く':'Walk 20 km in total','スタンプラリーを達成する':'Complete the stamp rally',
+  '歩行ポイント':'Walking points','スタンプラリー達成':'Stamp rally complete',
+  'バッジ獲得数':'Badges earned','まだバッジがありません':'No badges yet','一覧を見る ›':'View all ›','← ホーム':'← Home','年':'Year','月':'Month','日':'Day','QRを読み取るとスタンプが1つたまります（同じお店は1日1回）':'Each QR scan adds a stamp (once per store per day)',
+  '歩いた距離':'Distance walked','1日平均':'Daily average','これまでの合計':'Total so far','使い方を見る':'How to use','使い方':'How to use',
+  '交換':'Exchange','スタンプ・バッジ':'Stamps and badges','← 特典':'← Rewards',
+  '地図':'Map','一覧':'List','★ お気に入り':'★ Favorites','☆ お気に入り':'☆ Favorite','★ 登録済み':'★ Saved','お気に入り':'Favorite','訪問済み':'Visited','該当するお店がありません':'No matching stores',
+  '現在地から近い順':'Nearest first','現在地を取得できないため、垂水駅からの距離で並べています':'Sorted by distance from Tarumi Station (your location is unavailable)',
+  'スキップ':'Skip','次へ':'Next','はじめる':'Get started','いま位置情報を許可する':'Allow location now',
+  'ようこそ！':'Welcome!','QRでポイントをためる':'Earn points with QR','歩いてポイントをためる':'Earn points by walking','スタンプとバッジ':'Stamps and badges','特典と交換する':'Exchange for rewards',
+  'たるみぽんぽんPayは、垂水の商店街でポイントをためて、お得な特典と交換できるアプリです。':'Tarumi Ponpon Pay lets you earn points at Tarumi shopping streets and exchange them for rewards.','使い方を、かんたんにご案内します。':'Here is a quick guide.',
+  'お店にあるQRコードを、下のメニューの「QR」で読み取ります。':'Scan the QR code at a store using "QR" in the bottom menu.','お店の近くで読み取ってください。同じお店は1日1回です。':'Please scan near the store. Each store can be scanned once a day.','カメラと位置情報を使います。':'The camera and your location are used.',
+  'ホームの「歩行開始」をオンにして、垂水区内を歩きます。':'Turn on "Start walking" on Home and walk inside Tarumi Ward.','アプリ版では、画面を閉じていても計測できます。':'In the app version, tracking continues even when the screen is off.','アプリを開いている間だけ計測できます。画面を消したり、別のアプリを開いたりすると止まることがあります。':'Tracking only works while the app is open. It may stop if the screen turns off or you open another app.','位置情報を使います。':'Your location is used.',
+  'QRを読み取るとスタンプが1つたまり、たまるとボーナスポイントがもらえます。':'Each QR scan adds a stamp, and a full card earns bonus points.','スタンプとバッジは、下のメニューの「特典」で見られます。':'See your stamps and badges under "Rewards" in the bottom menu.',
+  'ためたポイントは、「特典」で割引券などと交換できます。':'Exchange your points for discount tickets under "Rewards".','お店で画面を見せて使ってください。':'Show the screen at the store to use it.','位置情報を許可しておくと、歩行ポイントやお店までの距離が使えます。':'Allow location access to use walking points and see distances to stores.',
+  'QRじょうず':'QR regular','QRマスター':'QR master','いろいろめぐり':'Variety explorer','50kmウォーカー':'50 km walker','たくさん歩いた日':'Big walking day','3日連続':'3-day streak','7日連続':'7-day streak','ラリーの達人':'Rally master','500ptゲット':'Earned 500 pt','2000ptゲット':'Earned 2000 pt','はじめての交換':'First exchange','お気に入り3店':'3 favorite stores',
+  'QRを合計10回読み取る':'Scan QR 10 times in total','QRを合計30回読み取る':'Scan QR 30 times in total','3つのジャンルのお店でQRを読み取る':'Scan QR at stores of 3 different categories','合計50km歩く':'Walk 50 km in total','1日に3km歩く':'Walk 3 km in one day','3日連続でQRか歩行をする':'Scan or walk 3 days in a row','7日連続でQRか歩行をする':'Scan or walk 7 days in a row','スタンプラリーを3回達成する':'Complete the stamp rally 3 times','ポイントを合計500pt獲得する':'Earn 500 pt in total','ポイントを合計2000pt獲得する':'Earn 2000 pt in total','特典を1回交換する':'Exchange a reward once','お気に入りのお店を3つ登録する':'Save 3 favorite stores'
+};
+const EN_RE = [
+  [/^(\d+)日$/, '$1 days'], [/^(\d+)日合計$/, '$1-day total'], [/^(\d+)m歩くごとに1pt（1日(\d+)ptまで）$/, '1 pt per $1 m walked (up to $2 pt a day)'],
+  [/^あと (\d+) pt$/, 'Need $1 more pt'], [/^獲得日 (.+)$/, 'Obtained $1'], [/^(.+) と交換$/, 'Exchanged: $1'],
+  [/^歩行ポイント（(\d+)倍）$/, 'Walking points (x$1)'], [/^(.+) QR（(\d+)倍）$/, '$1 QR (x$2)'],
+  [/^あと(\d+)個でボーナス\+(\d+)pt$/, 'Collect $1 more stamp(s) for a +$2 pt bonus'], [/^達成回数 (\d+)$/, 'Completed: $1'],
+  [/^🎉 スタンプラリー達成！ \+(\d+) pt$/, '🎉 Stamp rally complete! +$1 pt'],
+  [/^🎉 ポイント(\d+)倍キャンペーン実施中(?:（〜(.+)）)?$/, (m, a, b) => `🎉 ${a}x points campaign${b ? ' (until ' + b + ')' : ''}`],
+  [/^残り(\d+)枚$/, '$1 left'], [/^〜(.+)まで$/, 'Until $1'], [/^営業時間 (.+)〜(.+?)(?:（(.)曜定休）)?$/, (m, a, b, c) => `Hours ${a}–${b}${c ? ' (closed ' + c + ')' : ''}`],
+  [/^電話$/, 'Tel'], [/^QRで (\d+)pt 獲得$/, '$1 pt per QR scan'], [/^QRで$/, 'Scan QR for'], [/^獲得$/, 'pts'],
+  [/^([\s\S]+?) のポイントは今日すでに獲得済みです。[\s\S]*$/, '$1: points already collected today (once per store per day).'],
+  [/^こちらのQR.*$/, '$&']
+];
+let LANG = localStorage.getItem('tarumiLang') || 'ja';
+const ORIG = new WeakMap();
+function trStr(str) {
+  const t = str.trim(); if (!t) return str;
+  let out = EN[t];
+  if (out === undefined) for (const [re, to] of EN_RE) if (re.test(t)) { out = t.replace(re, to); break; }
+  return out === undefined ? str : str.replace(t, () => out);
+}
+function applyLang(root) {
+  root = root || document.body;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n; (n = w.nextNode());) {
+    if (/^(SCRIPT|STYLE|TEXTAREA)$/.test(n.parentNode.nodeName)) continue;
+    if (!ORIG.has(n)) ORIG.set(n, n.nodeValue);
+    const v = LANG === 'en' ? trStr(ORIG.get(n)) : ORIG.get(n);
+    if (n.nodeValue !== v) n.nodeValue = v;
+  }
+  if (root.querySelectorAll) root.querySelectorAll('[placeholder],[aria-label],[title]').forEach(el => ['placeholder', 'aria-label', 'title'].forEach(a => {
+    if (!el.hasAttribute(a)) return;
+    if (!el.hasAttribute('data-o-' + a)) el.setAttribute('data-o-' + a, el.getAttribute(a));
+    const o = el.getAttribute('data-o-' + a); el.setAttribute(a, LANG === 'en' ? trStr(o) : o);
+  }));
+}
+new MutationObserver(ms => { if (LANG === 'en') ms.forEach(m => m.addedNodes.forEach(n => applyLang(n.nodeType === 1 ? n : n.parentNode))); }).observe(document.body, { childList: true, subtree: true });
+document.querySelectorAll('.langSel').forEach(sel => {
+  sel.value = LANG;
+  sel.addEventListener('change', () => {
+    LANG = sel.value; localStorage.setItem('tarumiLang', LANG); document.documentElement.lang = LANG;
+    document.querySelectorAll('.langSel').forEach(x => { x.value = LANG; });
+    applyLang();
+  });
+});
+
+/* ==================== 起動 ==================== */
+renderStatic();
+if (LANG === 'en') { document.documentElement.lang = 'en'; applyLang(); }
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});   // PWA（ホーム画面に追加できる）
+(async () => { // 前回のログインが残っていれば自動でログイン
+  const rt = localStorage.getItem('tarumiRT');
+  try { if (rt) { AUTH.refresh = rt; await token(true); const u = await DB.get('users/' + AUTH.uid); if (u) return enter(await withRole(u)); } } catch (e) {}
+  setMode('login'); $('#auth').classList.add('show');
+})();
+</script>
+</body>
+</html>
